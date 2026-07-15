@@ -52,7 +52,6 @@ public class FactionScreen extends Screen {
     private final GuiValueRenderer segmentRenderer = (graphics, x, y, level) -> {
         int filledBlocks = (int) (level * 10);
 
-        // Evaluate your clean state flag directly instead of unstable pixel positions
         int currentColor = (currentRenderingBarType == 0) ? powerDisplayColor :
                 (currentRenderingBarType == 1) ? shipsDisplayColor :
                         (currentRenderingBarType == 2) ? cogsDisplayColor :
@@ -217,13 +216,13 @@ public class FactionScreen extends Screen {
         int contentW = frameW - 30;
         int topRowH = 82;
 
-        // Column 1: Members/Power Data Column
+        //Members/Power Data Column
         int col1X = x + 80;
         graphics.drawString(this.font, "§6§l" + ClientFactionCache.getCurrentFaction().toUpperCase(), col1X, y + 2, 0xFFFFFF);
         graphics.drawString(this.font, "Title: " + ClientFactionCache.getCurrentCleanOrigin() + " (Leader)", col1X, y + 14, 0xAAAAAA);
         graphics.drawString(this.font, "Power: " + ClientFactionCache.getFactionSize() + " / " + ClientFactionCache.getTotalGlobalPlayers(), col1X, y + 26, 0xAAAAAA);
 
-        // Render Segmented Member Squares Grid (1 Filled, 11 Empty)
+        //Render Segmented Member Squares Grid
         float activeSize = (float) ClientFactionCache.getFactionSize();
         float totalGlobal = (float) ClientFactionCache.getTotalGlobalPlayers();
         float powerRatio = (totalGlobal > 0.0f) ? activeSize / totalGlobal : 0.0f;
@@ -232,12 +231,12 @@ public class FactionScreen extends Screen {
 
         graphics.drawString(this.font, "§d§lAIRSHIPS", col1X, y + 52, 0xFFFFFF);
 
-        // Render Segmented Power Squares Grid (9 Filled, 1 Empty)
+        //Render Segmented Power Squares
         float airshipsRatio = 0.9f;
         this.currentRenderingBarType = 1; // Flag as Airships
         segmentRenderer.render(graphics, col1X, y + 70, airshipsRatio);
 
-        // Column 2: Statistics & Storage Column
+        //Resources Column
         int col2X = x + 200;
         graphics.drawString(this.font, "§6§lRESOURCES", col2X, y + 2, 0xFFFFFF);
         graphics.drawString(this.font, "• Cogs:", col2X, y + 14, 0xAAAAAA);
@@ -261,7 +260,7 @@ public class FactionScreen extends Screen {
         this.currentRenderingBarType = 4; // Flag as Mana
         segmentRenderer.render(graphics, col2X, y + 78, manaRatio);
 
-        int extendedTopRowH = 92; // Expanded by 10 pixels to comfortably house the Lapis row
+        int extendedTopRowH = 92;
 
         // Horizontal Separation Border Rule
         graphics.fill(x, y + extendedTopRowH + 2, x + contentW, y + extendedTopRowH + 3, 0xFF2D2D2D);
