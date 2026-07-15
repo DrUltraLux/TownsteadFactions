@@ -2,7 +2,6 @@ package com.drultralux.townstead_factions.client.screen;
 
 import com.drultralux.townstead_factions.client.ClientFactionCache;
 import dev.marie.MariesLib.client.GuiValueRenderer;
-import dev.marie.MariesLib.client.MarieClientState;
 import dev.marie.MariesLib.client.MarieValueColors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -40,11 +39,31 @@ public class FactionScreen extends Screen {
 
     private boolean isDraggingScrollbar = false;
 
-    /*
-    private int cogsDisplayColor = MarieValueColors.GOLD;
-    private int foodDisplayColor = MarieValueColors.GREEN;
-    private int manaDisplayColor = MarieValueColors.CYAN;
-    */
+    private int powerDisplayColor;
+    private int shipsDisplayColor;
+    private int cogsDisplayColor;
+    private int foodDisplayColor;
+    private int manaDisplayColor;
+
+    // MariesLib Functional Interface implementations
+    private int currentRenderingBarType = 0; // 0=Power, 1=Ships, 2=Cogs, 3=Food, 4=Mana
+
+    // A single, reusable MariesLib functional instance handling all segment loops
+    private final GuiValueRenderer segmentRenderer = (graphics, x, y, level) -> {
+        int filledBlocks = (int) (level * 10);
+
+        // Evaluate your clean state flag directly instead of unstable pixel positions
+        int currentColor = (currentRenderingBarType == 0) ? powerDisplayColor :
+                (currentRenderingBarType == 1) ? shipsDisplayColor :
+                        (currentRenderingBarType == 2) ? cogsDisplayColor :
+                                (currentRenderingBarType == 3) ? foodDisplayColor : manaDisplayColor;
+
+        for (int i = 0; i < 10; i++) {
+            int blockColor = (i < filledBlocks) ? currentColor : 0xFF2A2A2A;
+            int blockX = x + (i * 8);
+            graphics.fill(blockX, y, blockX + 6, y + 6, blockColor);
+        }
+    };
 
     public FactionScreen() {
         super(Component.literal("Faction Menu"));
@@ -53,6 +72,18 @@ public class FactionScreen extends Screen {
     @Override
     protected void init() {
         super.init();
+
+        MarieValueColors.setOverride("power", 0xFFCC2222);  // Red
+        MarieValueColors.setOverride("ships", 0xFFA95FFF);  // Purple/Pink
+        MarieValueColors.setOverride("gold", 0xFFFFD65C);   // Gold
+        MarieValueColors.setOverride("food", 0xFFFF9955);   // Orange
+        MarieValueColors.setOverride("mana", 0xFF55AAFF);   // Blue
+
+        this.powerDisplayColor = MarieValueColors.baseColorArgb("power");
+        this.shipsDisplayColor = MarieValueColors.baseColorArgb("ships");
+        this.cogsDisplayColor = MarieValueColors.baseColorArgb("gold");
+        this.foodDisplayColor = MarieValueColors.baseColorArgb("food");
+        this.manaDisplayColor = MarieValueColors.baseColorArgb("mana");
 
         PacketDistributor.sendToServer(new com.drultralux.townstead_factions.client.MenuRequestPayload());
 
@@ -63,10 +94,15 @@ public class FactionScreen extends Screen {
     }
 
     @Override
+    public void onClose() {
+        // Clear all active transient configurations to keep the library memory space clean
+        MarieValueColors.clearOverrides();
+        super.onClose();
+    }
+
+    @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         this.renderBackground(graphics, mouseX, mouseY, partialTicks);
-
-        //MarieClientState.setCurrentContextWidth(this.frameW);
 
         // Render main bounding background box canvas grid framework
         graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF121212);
@@ -188,30 +224,18 @@ public class FactionScreen extends Screen {
         graphics.drawString(this.font, "Power: " + ClientFactionCache.getFactionSize() + " / " + ClientFactionCache.getTotalGlobalPlayers(), col1X, y + 26, 0xAAAAAA);
 
         // Render Segmented Member Squares Grid (1 Filled, 11 Empty)
-        int activeSize = ClientFactionCache.getFactionSize();
-        int totalGlobal = ClientFactionCache.getTotalGlobalPlayers();
-
-        // Calculate the clean fractional ratio threshold (Default to 0 if no players are logged in)
-        double ratio = (totalGlobal > 0) ? (double) activeSize / totalGlobal : 0.0;
-        int filledBoxesNeeded = (int) Math.round(ratio * 10.0);
-
-        int blockX = col1X;
-        for (int b = 0; b < 10; b++) {
-            // If the current box position sits within the percentage ratio, light it up red!
-            int blockColor = (b < filledBoxesNeeded) ? 0xFFCC2222 : 0xFF2A2A2A;
-            graphics.fill(blockX, y + 38, blockX + 6, y + 44, blockColor);
-            blockX += 8;
-        }
+        float activeSize = (float) ClientFactionCache.getFactionSize();
+        float totalGlobal = (float) ClientFactionCache.getTotalGlobalPlayers();
+        float powerRatio = (totalGlobal > 0.0f) ? activeSize / totalGlobal : 0.0f;
+        this.currentRenderingBarType = 0; // Flag as Power
+        segmentRenderer.render(graphics, col1X, y + 38, powerRatio);
 
         graphics.drawString(this.font, "§d§lAIRSHIPS", col1X, y + 52, 0xFFFFFF);
 
         // Render Segmented Power Squares Grid (9 Filled, 1 Empty)
-        int pBlockX = col1X;
-        for (int p = 0; p < 10; p++) {
-            int blockColor = (p < 9) ? 0xFFD63384 : 0xFF2A2A2A; // Pink for filled, Dark Grey for empty
-            graphics.fill(pBlockX, y + 64, pBlockX + 6, y + 70, blockColor);
-            pBlockX += 8;
-        }
+        float airshipsRatio = 0.9f;
+        this.currentRenderingBarType = 1; // Flag as Airships
+        segmentRenderer.render(graphics, col1X, y + 70, airshipsRatio);
 
         // Column 2: Statistics & Storage Column
         int col2X = x + 200;
@@ -219,35 +243,23 @@ public class FactionScreen extends Screen {
         graphics.drawString(this.font, "• Cogs:", col2X, y + 14, 0xAAAAAA);
 
         //Currency Squares
-        int currentCogs = ClientFactionCache.getCogs();
-        int gBlockX = col2X;
-        for (int g = 0; g < 10; g++) {
-            int blockColor = (g < currentCogs) ? 0xFFFFAA00 : 0xFF2A2A2A;
-            graphics.fill(gBlockX, y + 26, gBlockX + 6, y + 32, blockColor);
-            gBlockX += 8;
-        }
+        float cogsRatio = ClientFactionCache.getCogs() / 10.0f;
+        this.currentRenderingBarType = 2; // Flag as Cogs
+        segmentRenderer.render(graphics, col2X, y + 26, cogsRatio);
 
         graphics.drawString(this.font, "• Food Supplies:", col2X, y + 40, 0xAAAAAA);
 
         //Food Squares
-        int currentFood = ClientFactionCache.getFood();
-        int iBlockX = col2X;
-        for (int i = 0; i < 10; i++) {
-            int blockColor = (i < currentFood) ? 0xFF55FF55 : 0xFF2A2A2A;
-            graphics.fill(iBlockX, y + 52, iBlockX + 6, y + 58, blockColor);
-            iBlockX += 8;
-        }
+        float foodRatio = ClientFactionCache.getFood() / 10.0f;
+        this.currentRenderingBarType = 3; // Flag as Food
+        segmentRenderer.render(graphics, col2X, y + 52, foodRatio);
 
         graphics.drawString(this.font, "• Mana Stockpile:", col2X, y + 66, 0xAAAAAA);
 
         //Magic Squares
-        int currentMana = ClientFactionCache.getMana();
-        int lBlockX = col2X;
-        for (int l = 0; l < 10; l++) {
-            int blockColor = (l < currentMana) ? 0xFF00AAAA : 0xFF2A2A2A;
-            graphics.fill(lBlockX, y + 78, lBlockX + 6, y + 84, blockColor);
-            lBlockX += 8;
-        }
+        float manaRatio = ClientFactionCache.getMana() / 10.0f;
+        this.currentRenderingBarType = 4; // Flag as Mana
+        segmentRenderer.render(graphics, col2X, y + 78, manaRatio);
 
         int extendedTopRowH = 92; // Expanded by 10 pixels to comfortably house the Lapis row
 

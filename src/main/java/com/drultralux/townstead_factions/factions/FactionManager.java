@@ -5,6 +5,7 @@ import com.drultralux.townstead_factions.LogManager;
 import com.drultralux.townstead_factions.TownsteadFactions;
 import com.drultralux.townstead_factions.client.FactionSyncPayload;
 import com.drultralux.townstead_factions.config.ModConfig;
+import com.drultralux.townstead_factions.integration.NumismaticsIntegration;
 import com.drultralux.townstead_factions.roots.OriginManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
@@ -172,7 +173,12 @@ public class FactionManager {
 
         if (factionID != null && !factionID.isEmpty()) {
             Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", player.getUUID());
-            liveCogs = faction.getCogs();
+            if (NumismaticsIntegration.isModPresent()) {
+                // Read directly from the external mod's live currency bank account sheet ledger
+                liveCogs = NumismaticsIntegration.getFactionBankAccountBalance(factionID);
+            } else {
+                liveCogs = faction.getCogs();
+            }
             liveFood = faction.getFood();
             liveMana = faction.getMana();
         }
