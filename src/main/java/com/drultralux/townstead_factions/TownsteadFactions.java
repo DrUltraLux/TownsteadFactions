@@ -24,11 +24,11 @@ import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
-@Mod(Townstead_factions.MODID)
-public class Townstead_factions {
+@Mod(TownsteadFactions.MODID)
+public class TownsteadFactions {
     public static final String MODID = "townstead_factions";
 
-    public Townstead_factions(IEventBus modEventBus) {
+    public TownsteadFactions(IEventBus modEventBus) {
 
         modEventBus.addListener(this::registerPackets);
         NeoForge.EVENT_BUS.register(this);

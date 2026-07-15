@@ -1,6 +1,9 @@
 package com.drultralux.townstead_factions.client.screen;
 
 import com.drultralux.townstead_factions.client.ClientFactionCache;
+import dev.marie.MariesLib.client.GuiValueRenderer;
+import dev.marie.MariesLib.client.MarieClientState;
+import dev.marie.MariesLib.client.MarieValueColors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -37,6 +40,12 @@ public class FactionScreen extends Screen {
 
     private boolean isDraggingScrollbar = false;
 
+    /*
+    private int cogsDisplayColor = MarieValueColors.GOLD;
+    private int foodDisplayColor = MarieValueColors.GREEN;
+    private int manaDisplayColor = MarieValueColors.CYAN;
+    */
+
     public FactionScreen() {
         super(Component.literal("Faction Menu"));
     }
@@ -56,6 +65,8 @@ public class FactionScreen extends Screen {
     @Override
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         this.renderBackground(graphics, mouseX, mouseY, partialTicks);
+
+        //MarieClientState.setCurrentContextWidth(this.frameW);
 
         // Render main bounding background box canvas grid framework
         graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF121212);
@@ -211,7 +222,6 @@ public class FactionScreen extends Screen {
         int currentCogs = ClientFactionCache.getCogs();
         int gBlockX = col2X;
         for (int g = 0; g < 10; g++) {
-            // Fills blocks up to your stored count value (assuming 1 block per 1 unit up to 10 max)
             int blockColor = (g < currentCogs) ? 0xFFFFAA00 : 0xFF2A2A2A;
             graphics.fill(gBlockX, y + 26, gBlockX + 6, y + 32, blockColor);
             gBlockX += 8;

@@ -2,7 +2,7 @@ package com.drultralux.townstead_factions.factions;
 
 import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.drultralux.townstead_factions.LogManager;
-import com.drultralux.townstead_factions.Townstead_factions;
+import com.drultralux.townstead_factions.TownsteadFactions;
 import com.drultralux.townstead_factions.client.FactionSyncPayload;
 import com.drultralux.townstead_factions.config.ModConfig;
 import com.drultralux.townstead_factions.roots.OriginManager;
@@ -14,7 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 
-@net.neoforged.fml.common.EventBusSubscriber(modid = Townstead_factions.MODID)
+@net.neoforged.fml.common.EventBusSubscriber(modid = TownsteadFactions.MODID)
 public class FactionManager {
     private static final Map<UUID, String> PLAYER_FACTIONS = new HashMap<>();
     private static final Map<String, Set<String>> FACTION_ROSTERS = new HashMap<>();
