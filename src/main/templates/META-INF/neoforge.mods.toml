@@ -77,3 +77,19 @@ side = "BOTH"
 # stop your mod loading on the server for example.
 #[features."${mod_id}"]
 #openGLVersion="[3.2,)"
+
+# Require Marie's Lib to be installed
+[[dependencies.townstead_factions]]
+modId="marieslib"
+type="required"
+versionRange="[0.1.1-beta.3,)"
+ordering="NONE"
+side="BOTH"
+
+# Require Townstead to be installed
+[[dependencies.townstead_factions]]
+modId="townstead"
+type="required"
+versionRange="[0.7.0+1.21.1,)"
+ordering="NONE"
+side="BOTH"

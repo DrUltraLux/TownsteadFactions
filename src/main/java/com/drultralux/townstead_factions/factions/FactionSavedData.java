@@ -1,5 +1,6 @@
-package com.drultralux.townstead_factions;
+package com.drultralux.townstead_factions.factions;
 
+import com.drultralux.townstead_factions.LogManager;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;

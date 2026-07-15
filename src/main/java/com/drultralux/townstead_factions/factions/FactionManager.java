@@ -1,5 +1,9 @@
-package com.drultralux.townstead_factions;
+package com.drultralux.townstead_factions.factions;
 
+import com.drultralux.townstead_factions.LogManager;
+import com.drultralux.townstead_factions.client.FactionSyncPayload;
+import com.drultralux.townstead_factions.config.ModConfig;
+import com.drultralux.townstead_factions.roots.OriginManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -9,6 +13,7 @@ import java.util.*;
 public class FactionManager {
     private static final Map<UUID, String> PLAYER_FACTIONS = new HashMap<>();
     private static final Map<String, Set<String>> FACTION_ROSTERS = new HashMap<>();
+    private static final Map<UUID, String> PLAYER_RAW_ORIGINS = new HashMap<>();
 
     // Global tracking reference to mark our database instance as dirty when changes occur
     private static FactionSavedData saveInstanceRef = null;
@@ -93,48 +98,40 @@ public class FactionManager {
         }
     }
 
+    public static boolean hasPlayerOriginShifted(UUID playerUUID, String liveRawRootID) {
+        if (!PLAYER_RAW_ORIGINS.containsKey(playerUUID)) return true;
+        return !PLAYER_RAW_ORIGINS.get(playerUUID).equals(liveRawRootID);
+    }
+
     /**
      * Compares saved world records against active configuration states on player login.
      * Automatically migrates player data matrices if an administrative update causes a collision.
      */
-    public static void reconcilePlayerFaction(ServerPlayer player, String activeRootID) {
-        if (player == null) return;
+    public static void reconcilePlayerFaction(ServerPlayer player, String activeRawRootID) {
+        if (player == null || activeRawRootID == null) return;
 
         UUID playerUUID = player.getUUID();
         String playerName = player.getScoreboardName();
 
-        //Calculate what their faction SHOULD be based on the live JSON config maps
-        String expectedFactionName = "None";
-        if (activeRootID != null) {
-            expectedFactionName = ModConfig.ROOT_TO_FACTION_MAP.getOrDefault(activeRootID, "None");
-        }
+        PLAYER_RAW_ORIGINS.put(playerUUID, activeRawRootID);
 
-        //Fetch what the historical world data save files currently track them as
-        boolean alreadyInDatabase = isPlayerAssigned(playerUUID);
-        String historicalSavedFaction = getPlayerFaction(playerUUID);
+        String expectedFactionName = ModConfig.ROOT_TO_FACTION_MAP.getOrDefault(activeRawRootID, "None");
+        String historicalSavedFaction = PLAYER_FACTIONS.getOrDefault(playerUUID, "None");
 
-        //Force an internal database migration if parameters don't match
-        if (alreadyInDatabase && !historicalSavedFaction.equals(expectedFactionName)) {
+        if (!historicalSavedFaction.equals(expectedFactionName)) {
             PLAYER_FACTIONS.put(playerUUID, expectedFactionName);
-
-            LogManager.info("Config Collision Caught for {}! Migrated '{}' -> assigned to new group: '{}'",
-                    playerName, historicalSavedFaction, expectedFactionName);
-
             if (saveInstanceRef != null) {
                 saveInstanceRef.setDirty();
             }
-
-            player.sendSystemMessage(Component.literal("§6★ Factions Updated! You have been migrated to: §e" + expectedFactionName + " ★"));
         }
 
-        //Run standard online roster list registration
-        registerOnlinePlayerToRoster(player);
-
-        //If they are a new player, execute the standard initial registry path assignment
-        if (!alreadyInDatabase && activeRootID != null) {
-            processPlayerAssignment(player, expectedFactionName);
-        } else if (!expectedFactionName.equals("None")) {
-            player.sendSystemMessage(Component.literal("§a★ Active Faction: §e" + expectedFactionName + " §a★"));
+        removePlayerFromAllRosters(playerName);
+        if (!expectedFactionName.equals("None")) {
+            FACTION_ROSTERS.computeIfAbsent(expectedFactionName, k -> new HashSet<>()).add(playerName);
+            if (!historicalSavedFaction.equals(expectedFactionName)) {
+                String cleanOriginName = OriginManager.getCleanNameForRoot(activeRawRootID);
+                player.sendSystemMessage(Component.literal("§a★ Joined Faction: §e" + expectedFactionName + " §a(" + cleanOriginName + ") ★"));
+            }
         }
     }
 
@@ -143,17 +140,23 @@ public class FactionManager {
 
         java.util.UUID playerUUID = player.getUUID();
         String currentFaction = getPlayerFaction(playerUUID);
-
-        // Convert our active online roster HashSet elements into a clean serializable list structure
         List<String> onlineCompanions = new ArrayList<>(getOnlineMembers(currentFaction));
+        List<String> serverFactionsList = new ArrayList<>(com.drultralux.townstead_factions.config.ModConfig.REGISTERED_FACTIONS);
 
-        LogManager.debug("Streaming network packet sync payload to client player: {} | Faction: {} | Online Companions Size: {}",
-                player.getScoreboardName(), currentFaction, onlineCompanions.size());
+        String rawRootID = "none";
+        String cleanOriginName = "None Chosen";
 
-        // Modern 1.21.1 NeoForge packet distribution pipeline: fires data straight over the network channel socket
+        // Extract raw data from Townstead natively on the server side
+        if (com.aetherianartificer.townstead.root.PlayerRoot.hasRoot(player)) {
+            rawRootID = com.aetherianartificer.townstead.root.PlayerRoot.getRootId(player);
+            if (rawRootID != null) {
+                cleanOriginName = com.drultralux.townstead_factions.roots.OriginManager.getCleanNameForRoot(rawRootID);
+            }
+        }
+
         net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
                 player,
-                new FactionSyncPayload(currentFaction, onlineCompanions)
+                new com.drultralux.townstead_factions.client.FactionSyncPayload(currentFaction, rawRootID, cleanOriginName, onlineCompanions, serverFactionsList)
         );
     }
 }

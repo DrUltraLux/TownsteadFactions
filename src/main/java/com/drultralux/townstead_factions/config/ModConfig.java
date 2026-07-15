@@ -1,6 +1,7 @@
-package com.drultralux.townstead_factions;
+package com.drultralux.townstead_factions.config;
 
 import com.aetherianartificer.townstead.root.RootRegistry;
+import com.drultralux.townstead_factions.LogManager;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 
@@ -59,7 +60,6 @@ public class ModConfig {
                     String factionName = entry.getKey();
                     List<String> assignedRoots = entry.getValue();
 
-                    // Rule: Factions without any assigned rootIDs or empty lists are completely ignored
                     if (assignedRoots == null || assignedRoots.isEmpty()) {
                         LogManager.debug("Ignoring config faction '{}' because its rootID array list is empty.", factionName);
                         continue;
@@ -70,20 +70,12 @@ public class ModConfig {
                     for (String rootID : assignedRoots) {
                         if (rootID == null) continue;
 
-                        // Isolate path keyword if developers pass namespaced configurations
-                        String cleanID = rootID.contains(":") ? rootID.split(":")[1] : rootID;
-
-                        // Rule: Only map IF the ID matches a real root record currently processed by Townstead
                         boolean isLoadedInTownstead = RootRegistry.all().stream()
-                                .anyMatch(root -> root != null && root.id() != null && root.id().getPath().equals(cleanID));
+                                .anyMatch(root -> root != null && root.id() != null && root.id().toString().equals(rootID));
 
                         if (isLoadedInTownstead) {
-                            ROOT_TO_FACTION_MAP.put(cleanID, factionName);
+                            ROOT_TO_FACTION_MAP.put(rootID, factionName);
                             hasAtLeastOneValidRoot = true;
-                            LogManager.debug("Validated root '{}' -> Assigned to custom faction: {}", cleanID, factionName);
-                        } else {
-                            // Silently ignore if it doesn't match a loaded rootID
-                            LogManager.debug("Silently ignoring unmatched config root ID descriptor: {}", rootID);
                         }
                     }
 

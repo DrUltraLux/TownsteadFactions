@@ -1,8 +1,11 @@
-package com.drultralux.townstead_factions;
+package com.drultralux.townstead_factions.roots;
 
 import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.aetherianartificer.townstead.root.RootRegistry;
 import com.aetherianartificer.townstead.root.Root;
+import com.drultralux.townstead_factions.LogManager;
+import com.drultralux.townstead_factions.config.ModConfig;
+import com.drultralux.townstead_factions.factions.FactionManager;
 import net.minecraft.server.level.ServerPlayer;
 
 public class OriginManager {

@@ -1,4 +1,4 @@
-package com.drultralux.townstead_factions;
+package com.drultralux.townstead_factions.config;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -12,27 +12,26 @@ public class FactionConfigModel {
     public Map<String, List<String>> factions = new LinkedHashMap<>();
 
     public FactionConfigModel() {
-        // Set up the default template matching your original setup on first boot
         List<String> mages = new ArrayList<>();
-        mages.add("blood_orc");
-        mages.add("wild_orc");
-        mages.add("celestial");
-        mages.add("tiefling");
-        mages.add("halfling");
+        mages.add("townstead_classic:blood_orc");
+        mages.add("townstead_classic:wild_orc");
+        mages.add("townstead_classic:celestial");
+        mages.add("townstead_classic:tiefling");
+        mages.add("townstead_classic:halfling");
         factions.put("Mages", mages);
 
         List<String> arcanists = new ArrayList<>();
-        arcanists.add("high_elf");
-        arcanists.add("dark_elf");
-        arcanists.add("wood_elf");
+        arcanists.add("townstead_classic:high_elf");
+        arcanists.add("townstead_classic:dark_elf");
+        arcanists.add("townstead_classic:wood_elf");
         factions.put("Arcanists", arcanists);
 
         List<String> machinists = new ArrayList<>();
-        machinists.add("mountain_dwarf");
-        machinists.add("hill_dwarf");
-        machinists.add("tinker_gnome");
-        machinists.add("deepwood_gnome");
-        machinists.add("goblin");
+        machinists.add("townstead_classic:mountain_dwarf");
+        machinists.add("townstead_classic:hill_dwarf");
+        machinists.add("townstead_classic:tinker_gnome");
+        machinists.add("townstead_classic:deepwood_gnome");
+        machinists.add("townstead_classic:goblin");
         factions.put("Machinists", machinists);
     }
 }
