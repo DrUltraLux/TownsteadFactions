@@ -10,20 +10,17 @@ import com.aetherianartificer.townstead.root.PlayerRoot;
 
 public class FactionCommands {
 
-    /**
-     * Natively registers and builds our sub-command tree paths into the game engine's console router.
-     */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
         dispatcher.register(Commands.literal("factions")
-                // Accessible to all active players without requiring cheat/Operator level 2 privileges
+                // Accessible to all active players
                 .requires(source -> source.getEntity() instanceof ServerPlayer)
 
-                // Branch Path A: /factions status
+                //factions status
                 .then(Commands.literal("status")
                         .executes(context -> executeStatus(context.getSource()))
                 )
 
-                // Branch Path B: /factions update
+                //factions update
                 .then(Commands.literal("update")
                         .executes(context -> executeForceUpdate(context.getSource()))
                 )
@@ -53,15 +50,15 @@ public class FactionCommands {
         if (source.getEntity() instanceof ServerPlayer player) {
             String activeRootID = null;
 
-            // 1. Re-extract their actual active root string from Townstead's core metadata layer
+            //Re-extract their actual active root string from Townstead's core metadata layer
             if (PlayerRoot.hasRoot(player)) {
                 activeRootID = PlayerRoot.getRootId(player);
             }
 
-            // 2. Force the server to re-evaluate their faction based on the active JSON lists
+            //Force the server to re-evaluate their faction based on the active JSON lists
             FactionManager.reconcilePlayerFaction(player, activeRootID);
 
-            // 3. Immediately broadcast a fresh network sync packet to fix their UI cache data
+            //Immediately broadcast a fresh network sync packet to fix their UI cache data
             FactionManager.syncFactionDataToClient(player);
 
             player.sendSystemMessage(Component.literal("§a§l[Factions]§r §7Successfully re-evaluated your root properties and forced a client network cache synchronization update!"));

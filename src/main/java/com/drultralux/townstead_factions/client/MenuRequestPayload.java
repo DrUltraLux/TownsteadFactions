@@ -10,7 +10,7 @@ public record MenuRequestPayload() implements CustomPacketPayload {
 
     public static final Type<MenuRequestPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(Townstead_factions.MODID, "menu_request"));
 
-    // An empty stream codec since this packet passes zero extra primitive types across the wire
+    // An empty stream codec since this packet passes zero extra primitive types
     public static final StreamCodec<FriendlyByteBuf, MenuRequestPayload> STREAM_CODEC = StreamCodec.unit(new MenuRequestPayload());
 
     @Override

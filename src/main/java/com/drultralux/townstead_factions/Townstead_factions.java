@@ -1,5 +1,6 @@
 package com.drultralux.townstead_factions;
 
+import com.drultralux.townstead_factions.client.ClientFactionCache;
 import com.drultralux.townstead_factions.client.ClientModEvents;
 import com.drultralux.townstead_factions.client.FactionSyncPayload;
 import com.drultralux.townstead_factions.client.MenuRequestPayload;
@@ -15,8 +16,10 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartedEvent;
 import net.neoforged.neoforge.event.tick.PlayerTickEvent;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
@@ -32,12 +35,12 @@ public class Townstead_factions {
 
         if (net.neoforged.fml.loading.FMLEnvironment.dist.isClient()) {
             //Register explicit Key Mappings to the Mod Event Bus
-            KeyMappings mappings = new com.drultralux.townstead_factions.client.screen.KeyMappings();
+            KeyMappings mappings = new KeyMappings();
             modEventBus.addListener(mappings::onRegisterKeyMappings);
 
             //Register client tick listener directly
-            ClientModEvents clientEvents = new com.drultralux.townstead_factions.client.ClientModEvents();
-            net.neoforged.neoforge.common.NeoForge.EVENT_BUS.register(clientEvents);
+            ClientModEvents clientEvents = new ClientModEvents();
+            NeoForge.EVENT_BUS.register(clientEvents);
         }
 
         LogManager.info("Townstead Factions Initialized Successfully!");
@@ -73,7 +76,7 @@ public class Townstead_factions {
      Startup/fetch our faction database
      */
     @SubscribeEvent
-    public void onServerStarted(net.neoforged.neoforge.event.server.ServerStartedEvent event) {
+    public void onServerStarted(ServerStartedEvent event) {
         FactionManager.initDatabaseInstance(event.getServer().overworld());
         LogManager.info("World database saving frameworks attached seamlessly.");
     }
@@ -114,12 +117,13 @@ public class Townstead_factions {
                 FactionSyncPayload.TYPE,
                 FactionSyncPayload.STREAM_CODEC,
                 (payload, context) -> context.enqueueWork(() -> {
-                    com.drultralux.townstead_factions.client.ClientFactionCache.updateCache(
+                    ClientFactionCache.updateCache(
                             payload.factionName(),
                             payload.rawRootID(),
                             payload.cleanOriginName(),
                             payload.onlineMembers(),
-                            payload.allFactions()
+                            payload.allFactions(),
+                            payload.globalOnlineCount()
                     );
                 })
         );
@@ -137,7 +141,7 @@ public class Townstead_factions {
     }
 
     @SubscribeEvent
-    public void onRegisterCommands(net.neoforged.neoforge.event.RegisterCommandsEvent event) {
+    public void onRegisterCommands(RegisterCommandsEvent event) {
         FactionCommands.register(event.getDispatcher());
         LogManager.info("User faction chat commands successfully mapped onto the server engine registry.");
     }

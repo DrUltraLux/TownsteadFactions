@@ -1,5 +1,6 @@
 package com.drultralux.townstead_factions.factions;
 
+import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.drultralux.townstead_factions.LogManager;
 import com.drultralux.townstead_factions.client.FactionSyncPayload;
 import com.drultralux.townstead_factions.config.ModConfig;
@@ -7,6 +8,7 @@ import com.drultralux.townstead_factions.roots.OriginManager;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 
@@ -22,24 +24,18 @@ public class FactionManager {
         saveInstanceRef = FactionSavedData.get(overworld);
     }
 
-    /**
-     * Natively checks if the player already has a persistent faction registration entry saved.
-     */
+   //seem to have forgotten about this... might need it later..
     public static boolean isPlayerAssigned(UUID playerUUID) {
         return PLAYER_FACTIONS.containsKey(playerUUID) && !PLAYER_FACTIONS.get(playerUUID).equals("None");
     }
 
-    /**
-     * Helper method to map raw NBT rows straight into our live tracking lists on world startup.
-     */
+    //Loads saved NBT data from world.
     public static void loadSavedAssignment(UUID uuid, String factionName) {
         PLAYER_FACTIONS.put(uuid, factionName);
         LogManager.debug("Loaded historical database record: UUID {} -> Faction: {}", uuid, factionName);
     }
 
-    /**
-     * Handles adding active players to roster listings when they join the session.
-     */
+    //Adds active players as they join
     public static void registerOnlinePlayerToRoster(ServerPlayer player) {
         if (player == null) return;
         String playerName = player.getScoreboardName();
@@ -52,9 +48,7 @@ public class FactionManager {
         }
     }
 
-    /**
-     * Natively registers a brand new player assignment configuration.
-     */
+    //New player registration
     public static void processPlayerAssignment(ServerPlayer player, String factionName) {
         if (player == null || factionName == null) return;
 
@@ -64,7 +58,7 @@ public class FactionManager {
         PLAYER_FACTIONS.put(playerUUID, factionName);
         registerOnlinePlayerToRoster(player);
 
-        // CRITICAL: Marks the file as dirty so NeoForge forces an immediate sector disk write on save ticks!
+        //Marks the file as dirty so NeoForge forces an immediate sector disk write on save ticks!
         if (saveInstanceRef != null) {
             saveInstanceRef.setDirty();
         }
@@ -84,6 +78,16 @@ public class FactionManager {
 
     public static Set<String> getOnlineMembers(String factionName) {
         return FACTION_ROSTERS.getOrDefault(factionName, Collections.emptySet());
+    }
+
+    public static int getTotalOnlineFactionPlayers() {
+        int total = 0;
+        for (Set<String> roster : FACTION_ROSTERS.values()) {
+            if (roster != null) {
+                total += roster.size();
+            }
+        }
+        return total;
     }
 
     public static void handlePlayerDisconnect(ServerPlayer player) {
@@ -141,22 +145,24 @@ public class FactionManager {
         java.util.UUID playerUUID = player.getUUID();
         String currentFaction = getPlayerFaction(playerUUID);
         List<String> onlineCompanions = new ArrayList<>(getOnlineMembers(currentFaction));
-        List<String> serverFactionsList = new ArrayList<>(com.drultralux.townstead_factions.config.ModConfig.REGISTERED_FACTIONS);
+        List<String> serverFactionsList = new ArrayList<>(ModConfig.REGISTERED_FACTIONS);
 
         String rawRootID = "none";
         String cleanOriginName = "None Chosen";
 
         // Extract raw data from Townstead natively on the server side
-        if (com.aetherianartificer.townstead.root.PlayerRoot.hasRoot(player)) {
-            rawRootID = com.aetherianartificer.townstead.root.PlayerRoot.getRootId(player);
+        if (PlayerRoot.hasRoot(player)) {
+            rawRootID = PlayerRoot.getRootId(player);
             if (rawRootID != null) {
-                cleanOriginName = com.drultralux.townstead_factions.roots.OriginManager.getCleanNameForRoot(rawRootID);
+                cleanOriginName = OriginManager.getCleanNameForRoot(rawRootID);
             }
         }
 
-        net.neoforged.neoforge.network.PacketDistributor.sendToPlayer(
+        int totalGlobalOnline = getTotalOnlineFactionPlayers();
+
+        PacketDistributor.sendToPlayer(
                 player,
-                new com.drultralux.townstead_factions.client.FactionSyncPayload(currentFaction, rawRootID, cleanOriginName, onlineCompanions, serverFactionsList)
+                new FactionSyncPayload(currentFaction, rawRootID, cleanOriginName, onlineCompanions, serverFactionsList, totalGlobalOnline)
         );
     }
 }

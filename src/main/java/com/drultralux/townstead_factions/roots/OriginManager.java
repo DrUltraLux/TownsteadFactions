@@ -29,6 +29,7 @@ public class OriginManager {
                 .orElse("Invalid");
     }
 
+    //errr not using this anymore.. completely forgot. I'll leave this here for now.
     public static void fetchInitialRootID(ServerPlayer player)
     {
         try {

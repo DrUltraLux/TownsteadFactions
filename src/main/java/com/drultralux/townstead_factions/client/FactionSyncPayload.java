@@ -8,7 +8,7 @@ import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
 import net.minecraft.resources.ResourceLocation;
 import java.util.List;
 
-public record FactionSyncPayload(String factionName, String rawRootID, String cleanOriginName, List<String> onlineMembers, List<String> allFactions) implements CustomPacketPayload {
+public record FactionSyncPayload(String factionName, String rawRootID, String cleanOriginName, List<String> onlineMembers, List<String> allFactions, int globalOnlineCount) implements CustomPacketPayload {
 
     public static final Type<FactionSyncPayload> TYPE = new Type<>(ResourceLocation.fromNamespaceAndPath(Townstead_factions.MODID, "faction_sync"));
 
@@ -18,6 +18,7 @@ public record FactionSyncPayload(String factionName, String rawRootID, String cl
             ByteBufCodecs.STRING_UTF8, FactionSyncPayload::cleanOriginName,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), FactionSyncPayload::onlineMembers,
             ByteBufCodecs.STRING_UTF8.apply(ByteBufCodecs.list()), FactionSyncPayload::allFactions,
+            ByteBufCodecs.INT, FactionSyncPayload::globalOnlineCount,
             FactionSyncPayload::new
     );
 

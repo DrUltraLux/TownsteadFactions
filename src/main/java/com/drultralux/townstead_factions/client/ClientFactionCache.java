@@ -9,12 +9,22 @@ public class ClientFactionCache {
     private static String currentCleanOrigin = "None Chosen";
     private static List<String> activeRoster = new ArrayList<>();
     private static List<String> discoveredFactions = new ArrayList<>();
+    private static int totalGlobalPlayers = 0;
 
-    public static void updateCache(String faction, String rawRoot, String cleanOrigin, List<String> members, List<String> factionsList) {
+    public static int getFactionSize() {
+        return activeRoster != null ? activeRoster.size() : 0;
+    }
+
+    public static int getTotalGlobalPlayers() {
+        return totalGlobalPlayers;
+    }
+
+    public static void updateCache(String faction, String rawRoot, String cleanOrigin, List<String> members, List<String> factionsList, int payloadGlobalCount) {
         currentFaction = faction != null ? faction : "None";
         currentRawRootID = rawRoot != null ? rawRoot : "none";
         currentCleanOrigin = cleanOrigin != null ? cleanOrigin : "None Chosen";
         activeRoster = members != null ? members : new ArrayList<>();
+        totalGlobalPlayers = payloadGlobalCount;
         discoveredFactions = factionsList != null ? factionsList : new ArrayList<>();
     }
 

@@ -8,7 +8,6 @@ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
 import net.minecraft.client.resources.sounds.SimpleSoundInstance;
 import net.minecraft.network.chat.Component;
 import net.minecraft.sounds.SoundEvents;
-import net.minecraft.world.entity.LivingEntity;
 import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.NotNull;
 import java.util.List;
@@ -20,7 +19,6 @@ public class FactionScreen extends Screen {
     private enum Tab { OVERVIEW, ROSTER, GLOBAL, SETTINGS }
     private Tab activeTab = Tab.OVERVIEW;
     private static int overviewScrollAmount = 0;
-    private boolean isOverviewScrollbarHovered = false;
 
     private static int frameX = -1;
     private static int frameY = -50;
@@ -32,10 +30,12 @@ public class FactionScreen extends Screen {
     private double dragOffsetX = 0;
     private double dragOffsetY = 0;
 
-    private static final int MIN_WIDTH = 250;
     private static final int MIN_HEIGHT = 150;
+    private static final int MAX_WIDTH = 450;
     private static final int TITLE_BAR_HEIGHT = 16;
     private static final int RESIZE_ZONE_SIZE = 10;
+
+    private boolean isDraggingScrollbar = false;
 
     public FactionScreen() {
         super(Component.literal("Faction Menu"));
@@ -47,7 +47,6 @@ public class FactionScreen extends Screen {
 
         PacketDistributor.sendToServer(new com.drultralux.townstead_factions.client.MenuRequestPayload());
 
-        // FIXED: Only centers the panel if it has never been initialized or resized by the player yet
         if (frameX == -1) {
             this.frameX = (this.width - this.frameW) / 2;
             this.frameY = (this.height - this.frameH) / 2;
@@ -58,104 +57,94 @@ public class FactionScreen extends Screen {
     public void render(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         this.renderBackground(graphics, mouseX, mouseY, partialTicks);
 
-        // 1. ALWAYS DRAW THE SOLID BACKGROUND SHAPES AT 1:1 SCALE FIRST!
-        // Main dark stone window frame background
-        graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF0D0D0D);
-        graphics.fill(frameX + 2, frameY + 2, frameX + frameW - 2, frameY + frameH - 2, 0xFF1C1C1C);
+        // Render main bounding background box canvas grid framework
+        graphics.fill(frameX, frameY, frameX + frameW, frameY + frameH, 0xFF121212);
 
-        // Top title bar grab panel
-        graphics.fill(frameX + 2, frameY + 2, frameX + frameW - 2, frameY + TITLE_BAR_HEIGHT, 0xFF2A2A2A);
-        graphics.fill(frameX + 2, frameY + TITLE_BAR_HEIGHT, frameX + frameW - 2, frameY + TITLE_BAR_HEIGHT + 1, 0xFF0D0D0D);
-
-        // Bottom right resizing triangle indicator
-        graphics.fill(frameX + frameW - 6, frameY + frameH - 3, frameX + frameW - 3, frameY + frameH - 6, 0xFF505050);
-        graphics.fill(frameX + frameW - 4, frameY + frameH - 3, frameX + frameW - 3, frameY + frameH - 4, 0xFF8A8A8A);
-
-        // Render your top selection tabs at 1:1 scale
         renderTopTabs(graphics, mouseX, mouseY);
 
-        // FIXED: Renders the 3D player container box and banner layout at 1:1 scale so it never detaches!
-        if (activeTab == Tab.OVERVIEW) {
-            renderOverview3DElements(graphics, mouseX, mouseY);
-        }
-
-        // 2. NOW APPLY THE MATRIX SCALE SPECIFICALLY FOR THE INNER CONTENT SEGMENTS
-        float textScale = ((float) frameW / 320.0F) * 0.85F;
-        if (textScale < 0.7F) textScale = 0.7F;
-        if (textScale > 1.5F) textScale = 1.5F;
-
         int contentX = frameX + 15;
-        int contentY = frameY + TITLE_BAR_HEIGHT + 20;
+        int contentY = frameY + 30;
         int contentW = frameW - 30;
-        int contentH = frameH - TITLE_BAR_HEIGHT - 35;
+        int contentH = frameH - 45;
 
-        // Clip all text lines rendering outside the main border framework container box
+        // UNIFIED VIEWPORT SCISSOR MASK LAYER
         graphics.enableScissor(contentX, contentY, contentX + contentW, contentY + contentH);
-
         graphics.pose().pushPose();
-        // Shift coordinate origin vertically based on the active mouse scroll track position
-        graphics.pose().translate(contentX, contentY - overviewScrollAmount, 0.0F);
-        graphics.pose().scale(textScale, textScale, 1.0F);
 
-        switch (activeTab) {
-            case OVERVIEW -> renderOverviewTab(graphics, 0, 0, mouseX, mouseY);
-            case ROSTER -> renderRosterTab(graphics, 0, 0);
-            case GLOBAL -> renderGlobalFactionsTab(graphics, 0, 0);
-            case SETTINGS -> renderSettingsTab(graphics, 0, 0);
+        // Applies vertical scrolling adjustments to ALL subcomponents simultaneously
+        graphics.pose().translate(0.0F, (float) -overviewScrollAmount, 0.0F);
+
+        if (activeTab == Tab.OVERVIEW) {
+            // Draw relative banner layout
+            int relativeX = contentX;
+            int relativeY = contentY;
+            int boxW = 55;
+            int boxH = 75;
+            int bannerBoxY = relativeY;
+            int bannerH = 14;
+            int playerBoxY = bannerBoxY + bannerH + 4;
+
+            int bannerSquareSize = bannerH + 4;
+            int bannerStartX = relativeX + (boxW - bannerSquareSize) / 2;
+            graphics.fill(bannerStartX, bannerBoxY - 2, bannerStartX + bannerSquareSize, bannerBoxY + bannerH + 2, 0xFF7A2222);
+
+            // Draw relative active overview texts
+            renderOverviewTab(graphics, contentX, contentY, mouseX, mouseY + overviewScrollAmount);
+
+            //DRAW UNIFIED 3D AVATAR MODEL (Linked cleanly to real-time scroll vectors)
+            if (this.minecraft != null && this.minecraft.player != null) {
+                Quaternionf entityRotation = new Quaternionf().rotationX((float) Math.PI);
+                Quaternionf cameraOrientation = new Quaternionf().rotationXYZ(0.0F, 0.0F, 0.0F);
+                InventoryScreen.renderEntityInInventory(
+                        graphics,
+                        (float) (relativeX + (boxW / 2) - 3),
+                        (float) (playerBoxY + boxH - 6),
+                        30,
+                        new Vector3f(0.0F, 0.0F, 0.0F),
+                        entityRotation,
+                        cameraOrientation,
+                        (net.minecraft.world.entity.LivingEntity) this.minecraft.player
+                );
+            }
+        } else if (activeTab == Tab.ROSTER) {
+            renderRosterTab(graphics, contentX, contentY);
+        } else if (activeTab == Tab.GLOBAL) {
+            renderGlobalFactionsTab(graphics, contentX, contentY);
+        } else if (activeTab == Tab.SETTINGS) {
+            renderSettingsTab(graphics, contentX, contentY);
         }
 
         graphics.pose().popPose();
-        graphics.disableScissor(); // Release active mask lock loops safely
+        graphics.disableScissor();
 
+        // Render scroll track elements inside the static frame coordinates zone
         if (activeTab == Tab.OVERVIEW) {
-            int totalNeededH = 210;
-            if (totalNeededH > contentH) {
-                int scrollTrackX = frameX + frameW - 10;
-                int barH = Math.max(15, (contentH * contentH) / totalNeededH);
-                int maxScroll = totalNeededH - contentH;
-                int barY = contentY + ((overviewScrollAmount * (contentH - barH)) / maxScroll);
+            int scrollTrackX = frameX + frameW - 10;
+            int scrollTrackY = contentY;
+            graphics.fill(scrollTrackX, scrollTrackY, scrollTrackX + 6, scrollTrackY + contentH, 0xFF0A0A0A);
 
-                this.isOverviewScrollbarHovered = mouseX >= scrollTrackX && mouseX <= scrollTrackX + 6 && mouseY >= contentY && mouseY <= contentY + contentH;
-
-                graphics.fill(scrollTrackX, contentY, scrollTrackX + 6, contentY + contentH, 0xFF0A0A0A);
-                graphics.fill(scrollTrackX + 1, barY, scrollTrackX + 5, barY + barH, isOverviewScrollbarHovered ? 0xFF8A8A8A : 0xFF505050);
+            int totalContentHeightNeeded = 220;
+            int maxScroll = Math.max(0, totalContentHeightNeeded - contentH);
+            if (maxScroll > 0) {
+                int thumbH = Math.max(10, (contentH * contentH) / totalContentHeightNeeded);
+                int thumbY = scrollTrackY + (overviewScrollAmount * (contentH - thumbH)) / maxScroll;
+                graphics.fill(scrollTrackX + 1, thumbY, scrollTrackX + 5, thumbY + thumbH, 0xFF555555);
             }
         }
 
         super.render(graphics, mouseX, mouseY, partialTicks);
-
-        if (activeTab == Tab.OVERVIEW && this.minecraft != null && this.minecraft.player != null) {
-            int playerBoxX = frameX + 15;
-            int playerBoxY = frameY + TITLE_BAR_HEIGHT + 20;
-            int boxW = 55;
-            int boxH = 75;
-
-            Quaternionf entityRotation = new Quaternionf().rotationX((float) Math.PI);
-            Quaternionf cameraOrientation = new Quaternionf().rotationXYZ(0.0F, 0.0F, 0.0F);
-
-            InventoryScreen.renderEntityInInventory(
-                    graphics,
-                    (float) (playerBoxX + (boxW / 2)),              // X center alignment
-                    (float) (playerBoxY + boxH - 24),               // FIXED: Raised from -8 to -24 to sit the player's boots cleanly on the inner frame floor!
-                    30,                                             // Scale size factor
-                    new Vector3f(0.0F, 0.0F, 0.0F),
-                    entityRotation,
-                    cameraOrientation,
-                    (LivingEntity) this.minecraft.player
-            );
-        }
     }
 
     private void renderTopTabs(GuiGraphics graphics, int mouseX, int mouseY) {
         String[] tabLabels = {"Overview", "Roster", "Global", "Settings"};
         int count = tabLabels.length;
 
-        // Dynamically scales the widths of your navigation buttons to match whatever size you stretch the screen frame to!
+        // Dynamically scales the widths of navigation buttons to match whatever size you stretch the screen frame to!
         int availableWidth = frameW - 12;
         int tabW = (availableWidth / count) - 2;
         int tabH = 14;
         int startX = frameX + 6;
-        int startY = frameY + TITLE_BAR_HEIGHT + 4;
+        int startY = frameY + 8;
 
         for (int i = 0; i < count; i++) {
             int currentX = startX + (i * (tabW + 2));
@@ -178,112 +167,101 @@ public class FactionScreen extends Screen {
     }
 
     private void renderOverviewTab(GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
-        String currentFaction = ClientFactionCache.getCurrentFaction();
-        String cleanRootName = ClientFactionCache.getCurrentCleanOrigin();
-
-        // 1. CALCULATE BOUNDS AND PREVENT COMPONENT CLASHES (Relative to static window size)
-        int usableW = frameW - 30;
-        int leftBoxW = 110;
-        int rightBoxW = usableW - leftBoxW - 10; // Auto-scales width dynamically so columns never touch!
-
+        int contentW = frameW - 30;
         int topRowH = 82;
-        int leftBoxX = x + 65;
-        int rightBoxX = leftBoxX + leftBoxW + 10;
 
-        // Panel Box backgrounds (Profiles & Resources)
-        graphics.fill(leftBoxX, y, leftBoxX + leftBoxW, y + topRowH, 0xFF0D0D0D);
-        graphics.fill(rightBoxX, y, rightBoxX + rightBoxW, y + topRowH, 0xFF0D0D0D);
+        // Column 1: Members/Power Data Column
+        int col1X = x + 80;
+        graphics.drawString(this.font, "§6§l" + ClientFactionCache.getCurrentFaction().toUpperCase(), col1X, y + 2, 0xFFFFFF);
+        graphics.drawString(this.font, "Title: " + ClientFactionCache.getCurrentCleanOrigin() + " (Leader)", col1X, y + 14, 0xAAAAAA);
+        graphics.drawString(this.font, "Power: " + ClientFactionCache.getFactionSize() + " / " + ClientFactionCache.getTotalGlobalPlayers(), col1X, y + 26, 0xAAAAAA);
 
-        // --- SUB-PANEL A: LEFT FACTION STATUS & MEMBERSHIP ---
-        int padX = leftBoxX + 6;
-        graphics.drawString(this.font, "§6§lMEMBERS", padX, y + 6, 0xFFFFFF);
-        graphics.drawString(this.font, "§7Rank: §eLeader", padX, y + 18, 0xFFFFFF);
-        graphics.drawString(this.font, "§7Count: §71 / 12", padX, y + 30, 0xFFFFFF);
+        // Render Segmented Member Squares Grid (1 Filled, 11 Empty)
+        int activeSize = ClientFactionCache.getFactionSize();
+        int totalGlobal = ClientFactionCache.getTotalGlobalPlayers();
 
-        // Render 1 filled block out of 12 total to track membership visually!
-        drawProgressGridBlocks(graphics, padX, y + 42, 1, 12, 0xFFe29c34);
+        // Calculate the clean fractional ratio threshold (Default to 0 if no players are logged in)
+        double ratio = (totalGlobal > 0) ? (double) activeSize / totalGlobal : 0.0;
+        int filledBoxesNeeded = (int) Math.round(ratio * 10.0);
 
-        graphics.drawString(this.font, "§d§lPOWER", padX, y + 56, 0xFFFFFF);
-        // Render 9 filled blocks out of 10 to track 92/100 faction power lines
-        drawProgressGridBlocks(graphics, padX, y + 68, 9, 10, 0xFFb55ec5);
-
-
-        // --- SUB-PANEL B: RIGHT ECONOMIC STATISTICS ---
-        int resPadX = rightBoxX + 6;
-        graphics.drawString(this.font, "§6§lSTATISTICS & STORAGE", resPadX, y + 6, 0xFFFFFF);
-
-        // Protect text lines from clipping right-side banner elements by imposing sub-offsets
-        graphics.drawString(this.font, "§e• Gold Treasury:", resPadX, y + 18, 0xFFFFFF);
-        drawProgressGridBlocks(graphics, resPadX, y + 28, 6, 10, 0xFFe0c060); // Mock 60% gold reserve filling
-
-        graphics.drawString(this.font, "§f• Stored Iron Ore:", resPadX, y + 42, 0xFFFFFF);
-        drawProgressGridBlocks(graphics, resPadX, y + 52, 4, 10, 0xFF909090); // Mock 40% iron storage filling
-
-        graphics.drawString(this.font, "§b• Lapis Lazuli:", resPadX, y + 66, 0xFFFFFF);
-
-
-        // --- SUB-PANEL C: BOUNDED RECENT ACTIVITY LOG PANEL WITH NATIVE SCROLLBARS ---
-        int logY = y + topRowH + 10;
-        int logW = frameW - 30;
-        int logH = frameH - logY - 45;
-
-        if (logH > 25) {
-            graphics.drawString(this.font, "§6⚙ RECENT ACTIVITY LOG", x, logY, 0xFFFFFF);
-
-            int innerBoxY = logY + 12;
-            graphics.fill(x, innerBoxY, x + logW, innerBoxY + logH, 0xFF0D0D0D); // Log sub-box framework
-
-            // Static array tracker of system logs
-            String[] logLines = {
-                    " §7• " + this.minecraft.player.getScoreboardName() + " §aopened the interface menu screen.",
-                    " §7• Server data synchronization payload channel verified cleanly.",
-                    " §7• Local core faction capability sheet maps initialized.",
-                    " §7• Database sector checks returning successful status blocks.",
-                    " §7• Active Townstead registry configurations parsed into memory layers."
-            };
-
-            int maxVisibleRows = (logH - 8) / 12;
-            int totalRows = logLines.length;
-
-            // DRAW NATIVE RENDER SCROLLBAR ACCENTS IF RECORDS EXTEND PAST VISIBLE COORDINATE LIMITS
-            if (totalRows > maxVisibleRows) {
-                int scrollTrackX = x + logW - 6;
-                int scrollBarH = Math.max(10, (maxVisibleRows * logH) / totalRows);
-
-                // Draw trailing scrolling tracks
-                graphics.fill(scrollTrackX, innerBoxY + 2, scrollTrackX + 4, innerBoxY + logH - 2, 0xFF050505);
-                // Draw the movable inner scroll slider box handles
-                graphics.fill(scrollTrackX + 1, innerBoxY + 4, scrollTrackX + 3, innerBoxY + 4 + scrollBarH, 0xFF505050);
-            }
-
-            // Print entries safely within bounds limits
-            int rowOffset = 6;
-            for (int i = 0; i < Math.min(totalRows, maxVisibleRows); i++) {
-                graphics.drawString(this.font, logLines[i], x + 4, innerBoxY + rowOffset, 0xAAAAAA);
-                rowOffset += 12;
-            }
+        int blockX = col1X;
+        for (int b = 0; b < 10; b++) {
+            // If the current box position sits within the percentage ratio, light it up red!
+            int blockColor = (b < filledBoxesNeeded) ? 0xFFCC2222 : 0xFF2A2A2A;
+            graphics.fill(blockX, y + 38, blockX + 6, y + 44, blockColor);
+            blockX += 8;
         }
-    }
 
-    private void renderOverview3DElements(GuiGraphics graphics, int mouseX, int mouseY) {
-        int contentX = frameX + 15;
-        int contentY = frameY + TITLE_BAR_HEIGHT + 20;
+        graphics.drawString(this.font, "§d§lAIRSHIPS", col1X, y + 52, 0xFFFFFF);
 
-        int boxW = 55;
-        int boxH = 75;
+        // Render Segmented Power Squares Grid (9 Filled, 1 Empty)
+        int pBlockX = col1X;
+        for (int p = 0; p < 10; p++) {
+            int blockColor = (p < 9) ? 0xFFD63384 : 0xFF2A2A2A; // Pink for filled, Dark Grey for empty
+            graphics.fill(pBlockX, y + 64, pBlockX + 6, y + 70, blockColor);
+            pBlockX += 8;
+        }
 
-        // FIXED: Shift boxes vertically so the banner sits cleanly right on top of the player!
-        int bannerBoxY = contentY;
-        int bannerH = 14;
-        int playerBoxY = bannerBoxY + bannerH + 4;
+        // Column 2: Statistics & Storage Column
+        int col2X = x + 200;
+        graphics.drawString(this.font, "§6§lRESOURCES", col2X, y + 2, 0xFFFFFF);
+        graphics.drawString(this.font, "• Cogs:", col2X, y + 14, 0xAAAAAA);
 
-        // Draw Dark Slate Display Shadow Windows at 1:1 scale
-        graphics.fill(contentX, bannerBoxY, contentX + boxW, bannerBoxY + bannerH, 0xFF0A0A0A);
-        graphics.fill(contentX, playerBoxY, contentX + boxW, playerBoxY + boxH, 0xFF0A0A0A);
+        // Render Segmented Gold Squares Grid (5 Filled, 5 Empty)
+        int gBlockX = col2X;
+        for (int g = 0; g < 10; g++) {
+            int blockColor = (g < 5) ? 0xFFFFAA00 : 0xFF2A2A2A; // Gold for filled, Dark Grey for empty
+            graphics.fill(gBlockX, y + 26, gBlockX + 6, y + 32, blockColor);
+            gBlockX += 8;
+        }
 
-        // Render the small compact Crimson Banner layout placeholder graphic
-        graphics.fill(contentX + 16, bannerBoxY + 3, contentX + boxW - 16, bannerBoxY + bannerH - 3, 0xFF7A2222);
-        graphics.fill(contentX + (boxW / 2) - 1, bannerBoxY + 2, contentX + (boxW / 2) + 1, bannerBoxY + bannerH - 2, 0xFF3A3A3A);
+        graphics.drawString(this.font, "• Food Supplies:", col2X, y + 40, 0xAAAAAA);
+
+        // Render Segmented Iron Squares Grid (4 Filled, 6 Empty)
+        int iBlockX = col2X;
+        for (int i = 0; i < 10; i++) {
+            int blockColor = (i < 4) ? 0xFF55FF55 : 0xFF2A2A2A; // Green for filled, Dark Grey for empty
+            graphics.fill(iBlockX, y + 52, iBlockX + 6, y + 58, blockColor);
+            iBlockX += 8;
+        }
+
+        graphics.drawString(this.font, "• Mana Stockpile:", col2X, y + 66, 0xAAAAAA);
+
+        int lBlockX = col2X;
+        for (int l = 0; l < 10; l++) {
+            int blockColor = (l < 7) ? 0xFF00AAAA : 0xFF2A2A2A; // Lapis Cyan for filled, Dark Grey for empty
+            graphics.fill(lBlockX, y + 78, lBlockX + 6, y + 84, blockColor);
+            lBlockX += 8;
+        }
+
+        int extendedTopRowH = 92; // Expanded by 10 pixels to comfortably house the Lapis row
+
+        // Horizontal Separation Border Rule
+        graphics.fill(x, y + extendedTopRowH + 2, x + contentW, y + extendedTopRowH + 3, 0xFF2D2D2D);
+
+        //Activity Log Box Viewport Layout
+        int logY = y + extendedTopRowH + 10;
+        int logW = frameW - 30;
+        int logH = 90;
+
+        graphics.drawString(this.font, "§6⚙ACTIVITY LOG", x, logY, 0xFFFFFF);
+        int innerBoxY = logY + 14;
+        graphics.fill(x, innerBoxY, x + logW, innerBoxY + logH, 0xFF0A0A0A);
+
+        String[] logLines = {
+                "• DrUltraLux opened the interface menu screen.",
+                "• Server data synchronization payload channel verified cleanly.",
+                "• Local core faction capability sheet maps initialized.",
+                "• Database sector checks returning successful status blocks.",
+                "• Active Townstead registry configurations parsed into memory layers."
+        };
+
+        int totalRows = logLines.length;
+        int rowOffset = 6;
+        for (int i = 0; i < totalRows; i++) {
+            graphics.drawString(this.font, logLines[i], x + 4, innerBoxY + rowOffset, 0xAAAAAA);
+            rowOffset += 12;
+        }
     }
 
     private void renderRosterTab(GuiGraphics graphics, int x, int y) {
@@ -324,33 +302,38 @@ public class FactionScreen extends Screen {
         graphics.drawString(this.font, "§6§lFACTION SETTINGS", x, y, 0xFFFFFF);
     }
 
-    // 4. MOUSE INPUT & MANIPULATION VECTOR INTERCEPTORS (THE DRAG & RESIZE ENGINE)
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
-        if (button == 0) { // Catch Left Clicks only
+        if (button == 0) {
 
-            // Checking Condition 1: Check if the cursor clicked inside the bottom-right resizing angle zone
+            if (activeTab == Tab.OVERVIEW) {
+                int contentH = frameH - TITLE_BAR_HEIGHT - 35;
+                int scrollTrackX = frameX + frameW - 10;
+                if (mouseX >= scrollTrackX && mouseX <= scrollTrackX + 6 && mouseY >= (frameY + TITLE_BAR_HEIGHT + 20) && mouseY <= (frameY + TITLE_BAR_HEIGHT + 20) + contentH) {
+                    this.isDraggingScrollbar = true;
+                    return true;
+                }
+            }
+
             if (mouseX >= (frameX + frameW - RESIZE_ZONE_SIZE) && mouseX <= (frameX + frameW) &&
                     mouseY >= (frameY + frameH - RESIZE_ZONE_SIZE) && mouseY <= (frameY + frameH)) {
                 this.isResizingFrame = true;
                 return true;
             }
 
-            // Checking Condition 2: Check if the cursor clicked inside the top dragging header grab bar
             if (mouseX >= frameX && mouseX <= (frameX + frameW) &&
-                    mouseY >= frameY && mouseY <= (frameY + TITLE_BAR_HEIGHT)) {
+                    mouseY >= frameY && mouseY <= (frameY + 8)) {
                 this.isDraggingFrame = true;
                 this.dragOffsetX = mouseX - frameX;
                 this.dragOffsetY = mouseY - frameY;
                 return true;
             }
 
-            // Checking Condition 3: Check if the cursor clicked on an upper tab selection button row
             int availableWidth = frameW - 12;
             int tabW = (availableWidth / Tab.values().length) - 2;
             int tabH = 14;
             int startX = frameX + 6;
-            int startY = frameY + TITLE_BAR_HEIGHT + 4;
+            int startY = frameY + 8;
 
             if (mouseY >= startY && mouseY <= startY + tabH) {
                 for (int i = 0; i < Tab.values().length; i++) {
@@ -373,20 +356,33 @@ public class FactionScreen extends Screen {
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (button == 0) {
-            // Execution Loop A: Process frame expansion resizing operations in real-time
-            if (this.isResizingFrame) {
-                int calculatedW = (int) (mouseX - frameX);
-                int calculatedH = (int) (mouseY - frameY);
 
-                // Enforce safety limits so the UI panel can never be squished into invisibility
-                this.frameW = Math.max(calculatedW, MIN_WIDTH);
+            if (this.isDraggingScrollbar && activeTab == Tab.OVERVIEW) {
+                int contentY = frameY + 30;
+                int contentH = frameH - 45;
+                int totalNeededH = 210;
+                int maxScroll = Math.max(0, totalNeededH - contentH);
+
+                double relativeY = Math.clamp(mouseY - contentY, 0, contentH);
+                overviewScrollAmount = (int) ((relativeY / (double)contentH) * maxScroll);
+                return true;
+            }
+
+            //Process frame expansion resizing operations in real-time
+            if (this.isResizingFrame) {
+                int calculatedW = (int) (mouseX - this.frameX);
+                int calculatedH = (int) (mouseY - this.frameY);
+
+                int currentMinWidth = getDynamicMinWidth();
+                this.frameW = Math.clamp(calculatedW, currentMinWidth, MAX_WIDTH);
                 this.frameH = Math.max(calculatedH, MIN_HEIGHT);
                 return true;
             }
 
-            // Execution Loop B: Shift the panel's absolute screen coordinates based on hand movements
+            //Shift the panel's absolute screen coordinates based on hand movements
             if (this.isDraggingFrame) {
-                this.frameX = (int) (mouseX - dragOffsetX);
+                int nextX = (int) (mouseX - this.dragOffsetX);
+                this.frameX = Math.clamp(nextX, 0, Math.max(0, this.width - this.frameW));
                 this.frameY = (int) (mouseY - dragOffsetY);
                 return true;
             }
@@ -397,6 +393,9 @@ public class FactionScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0) {
+
+            this.isDraggingScrollbar = false;
+
             // Drop tracking states instantly when mouse clicks release
             this.isDraggingFrame = false;
             this.isResizingFrame = false;
@@ -411,16 +410,15 @@ public class FactionScreen extends Screen {
 
     @Override
     public void renderBackground(@NotNull GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        // Empty block: Safely terminates the fullscreen dark vignette overlay shader pass!
+        //Safely terminates the fullscreen dark vignette overlay shader pass!
     }
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        // Retrieve the current physical GLFW key integer bound to your custom F binding configuration
+        // Retrieve the current physical GLFW key integer bound to your custom binding configuration
         int targetToggleKey = KeyMappings.OPEN_FACTION_MENU.getKey().getValue();
 
         if (keyCode == targetToggleKey) {
-            // FIXED: Natively closes the screen container on the spot when hitting F!
             if (this.minecraft != null && this.minecraft.player != null) {
                 this.minecraft.player.closeContainer();
             }
@@ -429,6 +427,7 @@ public class FactionScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    //come back to this later
     private void drawProgressGridBlocks(GuiGraphics graphics, int x, int y, int filledCount, int totalCount, int blockColor) {
         int blockW = 6;
         int blockH = 8;
@@ -448,16 +447,29 @@ public class FactionScreen extends Screen {
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
         if (activeTab == Tab.OVERVIEW) {
-            int contentH = frameH - TITLE_BAR_HEIGHT - 35;
-            int totalContentHeightNeeded = 210;
-            int maxScroll = Math.max(0, totalContentHeightNeeded - contentH);
+            // Calculate max scroll based on total content height
+            int maxScroll = Math.max(0, 210 - (frameH - TITLE_BAR_HEIGHT - 35));
 
-            // Shift the scrolling position trackers by standard scroll units (12 pixels per wheel notch)
-            overviewScrollAmount = (int) (overviewScrollAmount - (scrollY * 12));
-            if (overviewScrollAmount < 0) overviewScrollAmount = 0;
-            if (overviewScrollAmount > maxScroll) overviewScrollAmount = maxScroll;
+            overviewScrollAmount = Math.clamp((int)(overviewScrollAmount - (scrollY * 16)), 0, maxScroll);
             return true;
         }
         return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+    }
+
+    //Needs a bit of rework...
+    private int getDynamicMinWidth() {
+        int baseMargin = 30;
+        switch (activeTab) {
+            case OVERVIEW -> {
+                // Measure both columns to see which string is currently the longest layout asset
+                int leftColWidth = 80 + this.font.width("Title: " + ClientFactionCache.getCurrentRawRootID() + " (Leader)");
+                int rightColWidth = 200 + this.font.width("§6§lSTATISTICS & STORAGE");
+
+                int maxContentWidth = Math.max(leftColWidth, rightColWidth);
+                return maxContentWidth + baseMargin;
+            }
+            case ROSTER, GLOBAL, SETTINGS -> { return 340; }
+            default -> { return 250; }
+        }
     }
 }
