@@ -207,29 +207,34 @@ public class FactionScreen extends Screen {
         graphics.drawString(this.font, "§6§lRESOURCES", col2X, y + 2, 0xFFFFFF);
         graphics.drawString(this.font, "• Cogs:", col2X, y + 14, 0xAAAAAA);
 
-        // Render Segmented Gold Squares Grid (5 Filled, 5 Empty)
+        //Currency Squares
+        int currentCogs = ClientFactionCache.getCogs();
         int gBlockX = col2X;
         for (int g = 0; g < 10; g++) {
-            int blockColor = (g < 5) ? 0xFFFFAA00 : 0xFF2A2A2A; // Gold for filled, Dark Grey for empty
+            // Fills blocks up to your stored count value (assuming 1 block per 1 unit up to 10 max)
+            int blockColor = (g < currentCogs) ? 0xFFFFAA00 : 0xFF2A2A2A;
             graphics.fill(gBlockX, y + 26, gBlockX + 6, y + 32, blockColor);
             gBlockX += 8;
         }
 
         graphics.drawString(this.font, "• Food Supplies:", col2X, y + 40, 0xAAAAAA);
 
-        // Render Segmented Iron Squares Grid (4 Filled, 6 Empty)
+        //Food Squares
+        int currentFood = ClientFactionCache.getFood();
         int iBlockX = col2X;
         for (int i = 0; i < 10; i++) {
-            int blockColor = (i < 4) ? 0xFF55FF55 : 0xFF2A2A2A; // Green for filled, Dark Grey for empty
+            int blockColor = (i < currentFood) ? 0xFF55FF55 : 0xFF2A2A2A;
             graphics.fill(iBlockX, y + 52, iBlockX + 6, y + 58, blockColor);
             iBlockX += 8;
         }
 
         graphics.drawString(this.font, "• Mana Stockpile:", col2X, y + 66, 0xAAAAAA);
 
+        //Magic Squares
+        int currentMana = ClientFactionCache.getMana();
         int lBlockX = col2X;
         for (int l = 0; l < 10; l++) {
-            int blockColor = (l < 7) ? 0xFF00AAAA : 0xFF2A2A2A; // Lapis Cyan for filled, Dark Grey for empty
+            int blockColor = (l < currentMana) ? 0xFF00AAAA : 0xFF2A2A2A;
             graphics.fill(lBlockX, y + 78, lBlockX + 6, y + 84, blockColor);
             lBlockX += 8;
         }

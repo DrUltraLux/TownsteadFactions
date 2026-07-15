@@ -123,7 +123,8 @@ public class Townstead_factions {
                             payload.cleanOriginName(),
                             payload.onlineMembers(),
                             payload.allFactions(),
-                            payload.globalOnlineCount()
+                            payload.globalOnlineCount(),
+                            payload.resources()
                     );
                 })
         );

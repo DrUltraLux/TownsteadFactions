@@ -2,9 +2,11 @@ package com.drultralux.townstead_factions.factions;
 
 import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.drultralux.townstead_factions.LogManager;
+import com.drultralux.townstead_factions.Townstead_factions;
 import com.drultralux.townstead_factions.client.FactionSyncPayload;
 import com.drultralux.townstead_factions.config.ModConfig;
 import com.drultralux.townstead_factions.roots.OriginManager;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
@@ -12,6 +14,7 @@ import net.neoforged.neoforge.network.PacketDistributor;
 
 import java.util.*;
 
+@net.neoforged.fml.common.EventBusSubscriber(modid = Townstead_factions.MODID)
 public class FactionManager {
     private static final Map<UUID, String> PLAYER_FACTIONS = new HashMap<>();
     private static final Map<String, Set<String>> FACTION_ROSTERS = new HashMap<>();
@@ -160,9 +163,86 @@ public class FactionManager {
 
         int totalGlobalOnline = getTotalOnlineFactionPlayers();
 
+        FactionSavedData data = FactionSavedData.get(player.serverLevel());
+        String factionID = getPlayerFaction(player.getUUID());
+
+        int liveCogs = 0;
+        int liveFood = 0;
+        int liveMana = 0;
+
+        if (factionID != null && !factionID.isEmpty()) {
+            Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", player.getUUID());
+            liveCogs = faction.getCogs();
+            liveFood = faction.getFood();
+            liveMana = faction.getMana();
+        }
+
+        // Pack your numeric fields securely inside a native CompoundTag
+        CompoundTag resourceTag = new net.minecraft.nbt.CompoundTag();
+        resourceTag.putInt("Cogs", liveCogs);
+        resourceTag.putInt("Food", liveFood);
+        resourceTag.putInt("Mana", liveMana);
+
         PacketDistributor.sendToPlayer(
                 player,
-                new FactionSyncPayload(currentFaction, rawRootID, cleanOriginName, onlineCompanions, serverFactionsList, totalGlobalOnline)
+                new FactionSyncPayload(currentFaction, rawRootID, cleanOriginName, onlineCompanions, serverFactionsList, totalGlobalOnline, resourceTag)
         );
+    }
+
+    public static void promotePlayerToLeader(ServerPlayer leader, ServerPlayer target) {
+        FactionSavedData data = FactionSavedData.get(leader.serverLevel());
+
+        String factionID = getPlayerFaction(leader.getUUID());
+        if (factionID != null && !factionID.isEmpty()) {
+            Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", leader.getUUID());
+            if (faction.isLeader(leader.getUUID())) {
+                faction.addLeader(leader.getUUID(), target.getUUID());
+                data.setDirty();
+                syncFactionDataToClient(leader);
+                syncFactionDataToClient(target);
+            }
+        }
+    }
+
+    public static void resignLeadershipRole(ServerPlayer leader) {
+        FactionSavedData data = FactionSavedData.get(leader.serverLevel());
+
+        String factionID = getPlayerFaction(leader.getUUID());
+        if (factionID != null && !factionID.isEmpty()) {
+            Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", leader.getUUID());
+            faction.resignToMember(leader.getUUID());
+            data.setDirty();
+            syncFactionDataToClient(leader);
+        }
+    }
+
+    @net.neoforged.bus.api.SubscribeEvent
+    public static void onRightClickBannerPattern(net.neoforged.neoforge.event.entity.player.PlayerInteractEvent.RightClickItem event) {
+        if (!event.getLevel().isClientSide() && event.getEntity() instanceof ServerPlayer player) {
+            net.minecraft.world.item.ItemStack heldItem = event.getItemStack();
+
+            if (heldItem.getItem() instanceof net.minecraft.world.item.BannerPatternItem) {
+                FactionSavedData data = FactionSavedData.get(player.serverLevel());
+
+                // FIXED: Calls your actual static helper method from FactionSavedData
+                String factionID = getPlayerFaction(player.getUUID());
+
+                if (factionID != null && !factionID.isEmpty()) {
+                    Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", player.getUUID());
+
+                    if (faction.isLeader(player.getUUID())) {
+                        CompoundTag itemNbt = (CompoundTag) heldItem.save(player.registryAccess());
+                        faction.updateBanner(player.getUUID(), itemNbt);
+                        data.setDirty();
+
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§aSuccessfully updated your faction's banner pattern scheme!"));
+                        syncFactionDataToClient(player);
+                        event.setCanceled(true);
+                    } else {
+                        player.sendSystemMessage(net.minecraft.network.chat.Component.literal("§cOnly faction leaders can update the master banner scheme!"));
+                    }
+                }
+            }
+        }
     }
 }

@@ -8,11 +8,13 @@ import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.minecraft.world.level.storage.DimensionDataStorage;
 
+import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
 public class FactionSavedData extends SavedData {
     private static final String DATA_NAME = "townstead_factions_players";
+    private final Map<String, Faction> activeFactions = new HashMap<>();
 
     // Standard factory definition required by modern 1.21.1 NeoForge SavedData setups
     public static final SavedData.Factory<FactionSavedData> FACTORY = new SavedData.Factory<>(
@@ -23,6 +25,20 @@ public class FactionSavedData extends SavedData {
 
     public FactionSavedData() {
         // Constructor for fresh world data generation structures
+    }
+
+    public Faction getFaction(String factionID) {
+        return activeFactions.get(factionID);
+    }
+
+    public Faction getOrCreateFaction(String factionID, String cleanName, java.util.UUID creatorUUID) {
+        if (!activeFactions.containsKey(factionID)) {
+            Faction faction = new Faction(factionID, cleanName, creatorUUID);
+            activeFactions.put(factionID, faction);
+            this.setDirty();
+            return faction;
+        }
+        return activeFactions.get(factionID);
     }
 
     /**
@@ -47,6 +63,15 @@ public class FactionSavedData extends SavedData {
                 }
             }
         }
+
+        if (nbt.contains("FactionsDataList", 9)) {
+            ListTag fList = nbt.getList("FactionsDataList", 10);
+            for (int i = 0; i < fList.size(); i++) {
+                Faction f = new Faction(fList.getCompound(i));
+                data.activeFactions.put(f.getFactionID(), f);
+            }
+        }
+
         return data;
     }
 
@@ -66,6 +91,12 @@ public class FactionSavedData extends SavedData {
         }
 
         nbt.put("Assignments", list);
+
+        net.minecraft.nbt.ListTag fList = new ListTag();
+        for (Faction f : activeFactions.values()) {
+            fList.add(f.saveToNBT());
+        }
+        nbt.put("FactionsDataList", fList);
         return nbt;
     }
 
