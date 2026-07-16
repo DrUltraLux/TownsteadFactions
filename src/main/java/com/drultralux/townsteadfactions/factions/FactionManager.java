@@ -2,142 +2,109 @@ package com.drultralux.townsteadfactions.factions;
 
 import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
-
+import com.drultralux.townsteadfactions.roots.OriginManager;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Acts as the centralized runtime controller and memory cache for the Factions subsystem.
- * Responsible for initializing domain instances from server configurations and managing
- * active player membership lookup tables dynamically.
+ * Centrally manages the creation, initialization, and tracking of active Faction instances.
+ * Enforces the config file as the single source of truth for structural definitions.
  */
 public class FactionManager {
     private static final FactionManager INSTANCE = new FactionManager();
 
-    // High-performance thread-safe memory mapping caches
-    private final Map<String, Faction> activeFactions = new ConcurrentHashMap<>();
-    private final Map<UUID, String> playerFactionMap = new ConcurrentHashMap<>();
+    /** Runtime map tracking all live active faction instances by their unique identifier names. */
+    private final Map<String, Faction> activeFactions = new HashMap<>();
 
-    private FactionManager() {
-        // Enforce private construction pattern for standard singleton allocation
-    }
-
-    /**
-     * Provides unified global access to the centralized faction tracking instance.
-     *
-     * @return the single active operational FactionManager manager reference
-     */
     public static FactionManager getInstance() {
         return INSTANCE;
     }
 
     /**
-     * Automatically constructs and initializes the core faction object instances
-     * based on entries registered within the central factions configuration file.
+     * Loops through factions.json, filters out unmapped origins, and populates live Faction instances.
+     * Enforces the constraint that a faction must have at least one valid origin to be initialized.
      */
     public void initializeFactionsFromConfig() {
-        LogManager.info("Loading faction registry definitions from configuration maps...");
+        LogManager.info("Initializing server factions from configuration mappings...");
+
+        // 1. Fetch the raw configuration dictionary map directly from your dynamic JSON container
+        Map<String, List<String>> configMap = ModConfig.FACTIONS.getFactionsMap();
+        Map<String, Faction> reconsiledFactions = new HashMap<>();
+
+        // 2. MAIN CREATION LOOP: Process each config category row dynamically
+        for (Map.Entry<String, List<String>> entry : configMap.entrySet()) {
+            String factionId = entry.getKey();
+            List<String> configuredOrigins = entry.getValue();
+
+            if (factionId == null || factionId.trim().isEmpty() || configuredOrigins == null) {
+                continue;
+            }
+
+            // Clean up the casing structure to maintain uniform layout lookups
+            String cleanFactionId = factionId.trim();
+            List<String> validOrigins = new ArrayList<>();
+
+            // 🔍 CROSS-EXAMINE LAYER: Check configured items against Townstead's active registry
+            for (String originId : configuredOrigins) {
+                if (originId != null) {
+                    String targetKey = originId.trim();
+                    if (OriginManager.isValidOrigin(targetKey)) {
+                        validOrigins.add(targetKey);
+                    } else {
+                        LogManager.warn("Config tracking verification warning: Origin '" + targetKey + "' was not found in Townstead registry cache.");
+                    }
+                }
+            }
+
+            if (!validOrigins.isEmpty()) {
+                // If the faction already exists from a previous server save file data block, preserve its state
+                Faction factionInstance;
+                if (this.activeFactions.containsKey(cleanFactionId)) {
+                    factionInstance = this.activeFactions.get(cleanFactionId);
+                    LogManager.debug("Re-initializing existing live faction instance: " + cleanFactionId);
+                } else {
+                    // Create a pristine new Faction tracking block using the default system UUID anchor
+                    LogManager.info("Creating fresh Faction instance from config layout target -> " + cleanFactionId);
+                    factionInstance = new Faction(cleanFactionId, cleanFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
+                }
+
+                // Synchronize the verified, clean origins array list straight to the Faction object structure
+                factionInstance.setValidOrigins(validOrigins);
+                reconsiledFactions.put(cleanFactionId, factionInstance);
+            } else {
+                LogManager.warn("Skipping initialization for faction '" + cleanFactionId + "': Possesses zero valid Townstead origins.");
+            }
+        }
+
+        // 3. ADMIN REMOVAL LOOP: Clear out any active tracking frames dropped or renamed out of the JSON file
         this.activeFactions.clear();
+        this.activeFactions.putAll(reconsiledFactions);
 
-        List<String> structuralRegistryIds = ModConfig.FACTIONS.getFactionRegistryList();
-
-        for (String id : structuralRegistryIds) {
-            if (id == null || id.trim().isEmpty()) continue;
-
-            String cleanId = id.trim().toLowerCase();
-            // Derive a readable display name string (e.g., "solar_vanguard" -> "Solar Vanguard")
-            String formattedName = formatIdToDisplayName(cleanId);
-
-            // Set up a structural system UUID anchor for unassigned starting leadership slots
-            UUID systemSystemAnchor = UUID.fromString("00000000-0000-0000-0000-000000000000");
-
-            Faction constructedFaction = new Faction(cleanId, formattedName, systemSystemAnchor);
-            this.activeFactions.put(cleanId, constructedFaction);
-
-            LogManager.debug("Instantiated operational faction unit template: " + cleanId + " (" + formattedName + ")");
-        }
-
-        LogManager.info("Successfully mapped and cached (" + this.activeFactions.size() + ") faction domains.");
+        LogManager.info("Faction initialization complete. Total active structures verified and loaded: " + this.activeFactions.size());
     }
 
     /**
-     * Maps an individual player profile straight into a targeted faction membership list.
-     * Automatically flushes out any outdated association traces held in memory pools.
-     *
-     * @param playerUUID the unique identifier string tracking the user entity
-     * @param factionID the target programmatic configuration key identifier to match against
+     * Binds a player to an explicit faction instance profile by updating membership registries.
      */
-    public void assignPlayerToFaction(UUID playerUUID, String factionID) {
-        if (factionID == null || factionID.isEmpty()) {
-            this.playerFactionMap.remove(playerUUID);
-            LogManager.debug("Cleared active faction tracking indices for player: " + playerUUID);
-            return;
-        }
+    public void assignPlayerToFaction(UUID playerUUID, String factionId) {
+        if (playerUUID == null || factionId == null) return;
+        String cleanId = factionId.trim();
 
-        String cleanFactionId = factionID.toLowerCase().trim();
-        Faction target = this.activeFactions.get(cleanFactionId);
-
-        if (target == null) {
-            LogManager.warn("Refusing membership link process. Specified faction code '" + cleanFactionId + "' is not registered.");
-            return;
-        }
-
-        // Drop historical memory trace tracking mappings if switching groups
-        String oldFactionId = this.playerFactionMap.put(playerUUID, cleanFactionId);
-        if (oldFactionId != null && !oldFactionId.equals(cleanFactionId)) {
-            Faction oldFaction = this.activeFactions.get(oldFactionId);
-            if (oldFaction != null) {
-                oldFaction.removeMember(playerUUID);
+        if (this.activeFactions.containsKey(cleanId)) {
+            // Unbind player from all alternative faction structures first to prevent duplication collisions
+            for (Faction faction : this.activeFactions.values()) {
+                faction.removeMember(playerUUID);
             }
+            // Attach the member directly to their newly resolved home target container
+            this.activeFactions.get(cleanId).addMember(playerUUID);
+            LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
         }
-
-        // Inject membership profile straight into the target object roster data layouts
-        target.addOrUpdateMember(playerUUID, FactionTitle.MEMBER);
-        LogManager.debug("Player " + playerUUID + " successfully indexed under faction roster: " + cleanFactionId);
     }
 
-    /**
-     * Queries the dynamic lookup table to track down which faction a player is currently sorted into.
-     *
-     * @param playerUUID the unique target tracking token key to locate
-     * @return the string tracking identifier code of the matched faction, or null if unassigned
-     */
-    public String getPlayerFactionId(UUID playerUUID) {
-        return this.playerFactionMap.get(playerUUID);
-    }
-
-    /**
-     * Pulls the absolute live Faction object configuration reference out of the runtime storage mapping cache.
-     *
-     * @param factionID the clean tracking registration key string to search for
-     * @return the active internal Faction class configuration profile, or null if missing
-     */
-    public Faction getFaction(String factionID) {
-        if (factionID == null) return null;
-        return this.activeFactions.get(factionID.toLowerCase().trim());
-    }
-
-    /**
-     * Exposes an immutable snapshot representation tracking all populated faction entities in active memory.
-     *
-     * @return an unmodifiable collection tracking the server's running faction models
-     */
     public Map<String, Faction> getActiveFactions() {
-        return java.util.Collections.unmodifiableMap(this.activeFactions);
-    }
-
-    private String formatIdToDisplayName(String rawId) {
-        String[] sentenceFragments = rawId.split("_");
-        StringBuilder stringBuilder = new StringBuilder();
-        for (String segment : sentenceFragments) {
-            if (!segment.isEmpty()) {
-                stringBuilder.append(Character.toUpperCase(segment.charAt(0)))
-                        .append(segment.substring(1))
-                        .append(" ");
-            }
-        }
-        return stringBuilder.toString().trim();
+        return this.activeFactions;
     }
 }

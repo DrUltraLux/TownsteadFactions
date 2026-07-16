@@ -20,7 +20,7 @@ public class KeyMappings {
             KEY_DASHBOARD,
             KeyConflictContext.IN_GAME,
             InputConstants.Type.KEYSYM,
-            GLFW.GLFW_KEY_O, // Restored back to the 'O' letter key shortcut
+            GLFW.GLFW_KEY_O,
             KEY_CATEGORY
     );
 }

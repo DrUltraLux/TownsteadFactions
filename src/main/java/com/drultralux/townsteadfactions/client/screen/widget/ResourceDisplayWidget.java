@@ -28,7 +28,6 @@ public class ResourceDisplayWidget extends DraggableWidget {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
-        // 1. COLLAPSED MINIMIZED VIEWPORT RENDERING ROUTINE
         if (this.isMinimized) {
             int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
             graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
@@ -40,7 +39,6 @@ public class ResourceDisplayWidget extends DraggableWidget {
             return;
         }
 
-        // 2. STANDARD EXPANDED VIEWPORT RENDERING ROUTINE
         int backgroundColor = this.isDragging ? 0xAA444444 : 0xAA222222;
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF666666);
@@ -48,7 +46,6 @@ public class ResourceDisplayWidget extends DraggableWidget {
         String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
         graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
 
-        // Fetch live values straight out of our optimized client data snapshot mapping matrix
         String activeId = ClientFactionCache.getAssignedFactionId();
         ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
 
@@ -57,7 +54,6 @@ public class ResourceDisplayWidget extends DraggableWidget {
         int liveFood = (faction != null) ? faction.food : 0;
         int liveMana = (faction != null) ? faction.mana : 0;
 
-        // Fetch our explicit color registrations natively from the active MariesLib palette engine
         int powerColor = MarieValueColors.baseColorArgb("power");
         int shipsColor = MarieValueColors.baseColorArgb("ships");
         int cogsColor = MarieValueColors.baseColorArgb("gold");
@@ -68,7 +64,6 @@ public class ResourceDisplayWidget extends DraggableWidget {
         graphics.drawString(this.font, "§b§lPOWER & MILITARY", this.x + 6, this.y + 6, 0xFFFFFF, false);
         graphics.drawString(this.font, "Members: " + factionSize, this.x + 8, this.y + 18, 0xAAAAAA, false);
 
-        // Render Segmented Member Squares Grid via the custom custom method segmentRenderer
         renderSegmentedBlocks(graphics, this.x + 8, this.y + 28, (factionSize > 0) ? factionSize / 100.0f : 0.0f, powerColor);
 
         graphics.drawString(this.font, "Airships Active", this.x + 8, this.y + 42, 0xAAAAAA, false);

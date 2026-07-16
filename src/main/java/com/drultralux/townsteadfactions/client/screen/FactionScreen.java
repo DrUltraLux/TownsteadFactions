@@ -71,7 +71,6 @@ public class FactionScreen extends Screen {
         this.tabPanels.clear();
         this.tabInternalIds.clear();
 
-        // 💡 AGNOSTIC ALIGNMENT: Uses the universal getters to pull dimension boundaries cleanly
         this.boxWidth = ModConfig.CLIENT.getInteger("mainBoxWidth", 360);
         this.boxHeight = ModConfig.CLIENT.getInteger("mainBoxHeight", 220);
 
@@ -94,7 +93,6 @@ public class FactionScreen extends Screen {
         int mainX = this.width / 2 - (this.boxWidth / 2);
         int mainY = this.height / 2 - (this.boxHeight / 2);
 
-        // 💡 AGNOSTIC ALIGNMENT: Uses the universal getters to translate coordinate snapshots cleanly
         this.treasuryWidget = new ResourceDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("treasuryWidgetX", -50), mainY + 40 + ModConfig.CLIENT.getInteger("treasuryWidgetY", -30));
         this.rosterWidget = new RosterDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("rosterWidgetX", 40), mainY + 40 + ModConfig.CLIENT.getInteger("rosterWidgetY", -10));
         this.globalWidget = new GlobalFactionsWidget(mainX + 20 + ModConfig.CLIENT.getInteger("globalWidgetX", -100), mainY + 40 + ModConfig.CLIENT.getInteger("globalWidgetY", 10));
@@ -153,6 +151,7 @@ public class FactionScreen extends Screen {
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         // Leave completely blank! This physically destroys vanilla's post-processing blur shader hook loop.
+        // There should be something here later for the 3D render layer.
     }
 
     /**

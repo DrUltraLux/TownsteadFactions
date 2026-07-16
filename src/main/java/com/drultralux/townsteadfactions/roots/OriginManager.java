@@ -1,103 +1,124 @@
 package com.drultralux.townsteadfactions.roots;
 
-import com.aetherianartificer.townstead.root.PlayerRoot;
-import com.aetherianartificer.townstead.root.RootRegistry;
 import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
-import com.drultralux.townsteadfactions.factions.FactionManager;
-import com.drultralux.townsteadfactions.network.FactionPacketManager;
+import com.aetherianartificer.townstead.root.RootRegistry;
+import com.aetherianartificer.townstead.root.PlayerRoot;
+import com.aetherianartificer.townstead.root.Root;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 /**
- * Acts as a connection bridge between Townstead Root tracking layers and the Factions core.
- * Evaluates origin choices at runtime to automate dynamic faction profile sorting maps.
+ * Directly synchronizes with Townstead registries to cache rootID and cleanID mappings.
+ * Serves validation and player origin data directly up to the FactionManager.
  */
 public class OriginManager {
+    /**
+     * Mirror cache of Townstead's master map loaded from datapacks.
+     * Key: rootID (e.g., "townstead_classic:high_elf") -> Value: cleanID (e.g., "High Elf")
+     */
+    private static final Map<String, String> originsCache = new HashMap<>();
 
     /**
-     * Reserved initialization method for processing data safety rails against Townstead registries.
+     * Pulls the complete list of active origins loaded into memory directly from Townstead.
+     * Maps native properties safely without relying on raw string formatting loops.
      */
-    public static void inheritTownsteadRegistries() {
-        LogManager.info("Hooking into Townstead tracking registries...");
-    }
-
-    /**
-     * Resolves a readable display name string out of a raw, unique Townstead resource path identity string.
-     *
-     * @param rootID the target unique character origin tracking ID string
-     * @return a clean, human-readable display name text string
-     */
-    public static String getCleanNameForRoot(String rootID) {
-        if (rootID == null || rootID.trim().isEmpty()) return "Unknown";
-
-        return RootRegistry.all().stream()
-                .filter(root -> root != null && root.id() != null &&
-                        (root.id().getPath().equals(rootID) || root.id().toString().equals(rootID)))
-                .map(root -> root.displayName().getString())
-                .findFirst()
-                .orElse("Invalid");
-    }
-
-    /**
-     * Fetches a connecting player's active choice assignment key straight out of Townstead capability providers.
-     *
-     * @param player the specific target ServerPlayer client tracking context
-     */
-    public static void fetchInitialRootID(net.minecraft.server.level.ServerPlayer player) {
+    public static void initializeFromTownstead() {
+        originsCache.clear();
         try {
-            // Extracts the player's active origin string namespace handle natively
-            //String origin = getPlayerOrigin(player);
-            String origin = "";
-            if (origin == null || origin.isEmpty()) {
-                LogManager.debug("Player " + player.getName().getString() + " possesses an unassigned or empty origin context.");
-                return;
-            }
+            // Fetch the raw list directly from Townstead's core API registry
+            List<Root> townsteadList = RootRegistry.all();
 
-            // 💡 THE CURE: Loops through our agnostic config map to see if the player's origin matches any registered faction array rows
-            String assignedFactionId = null;
-            for (java.util.Map.Entry<String, net.neoforged.neoforge.common.ModConfigSpec.ConfigValue<?>> entry : com.drultralux.townsteadfactions.config.ModConfig.FACTIONS.valuesRegistry.entrySet()) {
-                if (entry.getValue().get() instanceof List<?> originsList) {
-                    for (Object element : originsList) {
-                        if (element instanceof String registeredOrigin && registeredOrigin.equalsIgnoreCase(origin)) {
-                            // The config key (e.g., "Mages", "Arcanists") becomes the live assigned faction namespace!
-                            assignedFactionId = entry.getKey();
-                            break;
-                        }
+            if (townsteadList != null) {
+                for (Root root : townsteadList) {
+                    if (root == null) continue;
+
+                    String rootId = root.id().toString();
+                    String cleanId = root.displayName().getString();
+
+                    if (rootId != null && cleanId != null) {
+                        originsCache.put(rootId.trim(), cleanId.trim());
                     }
                 }
-                if (assignedFactionId != null) break;
-            }
-
-            if (assignedFactionId != null) {
-                LogManager.info("Mapping player profile " + player.getName().getString() + " over to the registered faction tier: " + assignedFactionId);
-                com.drultralux.townsteadfactions.factions.FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), assignedFactionId);
+                LogManager.info("Successfully mirrored Townstead origin objects. Active options cached: " + originsCache.size());
+            } else {
+                LogManager.warn("Townstead RootRegistry.all() returned a null list collection!");
             }
         } catch (Exception e) {
-            LogManager.error("Failed to safely evaluate initial login assignment matrices for user profile: " + player.getName().getString(), e);
+            LogManager.error("Failed to parse master origin elements out of Townstead registries!", e);
         }
     }
 
     /**
-     * Matches the verified character root against your TOML configurations to resolve group allocations.
+     * Verifies whether a given identifier represents a true, active origin loaded by Townstead.
+     * Used by FactionManager to prevent the creation of dead or unmapped factions.
+     *
+     * @param rootId The unique structural identifier string
+     * @return true if the rootID exists inside Townstead's registries, false otherwise
      */
-    private static void playerFactionChecker(ServerPlayer player, String origin) {
-        LogManager.debug("Processing configuration check for origin tracking label: " + origin);
+    public static boolean isValidOrigin(String rootId) {
+        if (rootId == null) return false;
+        return originsCache.containsKey(rootId.trim());
+    }
 
-        // Pull target routing from the configuration mapping files
-        // (This expects a lookup method or map parameter matching your ModConfig layout)
-        List<String> registeredOrigins = ModConfig.FACTIONS.getFactionRegistryList();
+    /**
+     * Fetches the clean English display title corresponding to a given rootID string.
+     * Used by UI screens, overlays, and chat formatting modules.
+     *
+     * @param rootId The structural identifier string
+     * @return the clean English display string title (e.g., "High Elf")
+     */
+    public static String getCleanName(String rootId) {
+        if (rootId == null) return "Unknown";
+        return originsCache.getOrDefault(rootId.trim(), rootId);
+    }
 
+    /**
+     * Direct getter to expose our tracked origins map registry.
+     */
+    public static Map<String, String> getOriginsCache() {
+        return originsCache;
+    }
 
-        // Fall back to clean configuration evaluations if direct mapping rules require it
-       // if (assignedFactionId == null) {
-        //    assignedFactionId = origin; // Defaults directly to matching the root name path if list values align
-       // }
+    /**
+     * Examines a joining player's selected character profile to resolve their target faction membership.
+     * Fully trusts Townstead's pre-validated rootId data and maps it straight to factions.json properties.
+     *
+     * @param player The target server player logging in
+     */
+    public static void fetchInitialRootID(ServerPlayer player) {
+        try {
+            UUID playerUUID = player.getUUID();
 
-        // Apply membership adjustments directly to the centralized data caching layers
-       // FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), assignedFactionId);
+            // Directly extract the pre-validated string ID from Townstead's player capabilities
+            String playerRootId = PlayerRoot.getRootId(player);
 
-        // Immediately pipe updated network states down to the client viewports
-        FactionPacketManager.sendFactionSyncPacket(player);
+            if (playerRootId == null || playerRootId.trim().isEmpty()) {
+                LogManager.debug("Player " + player.getName().getString() + " does not possess an assigned rootId configuration.");
+                return;
+            }
+
+            String cleanedRootId = playerRootId.trim();
+            String targetFactionKey = null;
+
+            // Scan through factions.json to see which category array contains this specific player rootId
+            for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
+                List<String> allowedOrigins = entry.getValue();
+                if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
+                    targetFactionKey = entry.getKey();
+                    break;
+                }
+            }
+
+            if (targetFactionKey != null) {
+                LogManager.info("Login Match: Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
+                com.drultralux.townsteadfactions.factions.FactionManager.getInstance().assignPlayerToFaction(playerUUID, targetFactionKey);
+            }
+        } catch (Exception e) {
+            LogManager.error("Failed to safely process login faction validation metrics for player: " + player.getName().getString(), e);
+        }
     }
 }

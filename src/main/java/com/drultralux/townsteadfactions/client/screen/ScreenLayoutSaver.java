@@ -13,7 +13,6 @@ public class ScreenLayoutSaver {
      */
     public static void saveWidgetLayout(int tx, int ty, int tTab, int rx, int ry, int rTab, int gx, int gy, int gTab, int boxW, int boxH) {
         try {
-            // 💡 RECURSIVE SYNTAX: Fetches the config value handles directly from our agnostic registry map via string keys
             setAgnosticValue("treasuryWidgetX", tx);
             setAgnosticValue("treasuryWidgetY", ty);
             setAgnosticValue("treasuryWidgetTab", tTab);

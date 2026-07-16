@@ -1,8 +1,10 @@
 package com.drultralux.townsteadfactions;
 
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
+import com.drultralux.townsteadfactions.client.ClientModEvents;
 import com.drultralux.townsteadfactions.client.FactionSyncPayload;
 import com.drultralux.townsteadfactions.config.ModConfig;
+import com.drultralux.townsteadfactions.events.FactionServerEvents;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -18,7 +20,7 @@ import net.neoforged.neoforge.network.registration.PayloadRegistrar;
  * Main initialization constructor launchpad class for the Townstead Factions modification.
  * Coordinates bootstrap tasks, hooks up nested configuration paths, and links independent event subsystems safely.
  */
-@Mod("townsteadfactions") // 💡 FIXED MODID: Cleans out the final underscored text token across your project!
+@Mod("townsteadfactions")
 public class TownsteadFactions {
     /**
      * Unique text workspace key representing the mod namespace inside registries.
@@ -35,10 +37,9 @@ public class TownsteadFactions {
     public TownsteadFactions(IEventBus modEventBus, ModContainer container) {
         LogManager.info("Initializing launchpad sequences via mod constructor...");
 
-        // 💡 FIXED SUBFOLDER ROUTING: Tells NeoForge to create a custom subdirectory "config/townsteadfactions/" on your hard drive!
         container.registerConfig(Type.CLIENT, ModConfig.CLIENT_SPEC, "townsteadfactions/client.toml");
         container.registerConfig(Type.COMMON, ModConfig.COMMON_SPEC, "townsteadfactions/common.toml");
-        container.registerConfig(Type.COMMON, ModConfig.FACTIONS_SPEC, "townsteadfactions/factions.toml");
+        //container.registerConfig(Type.COMMON, ModConfig.FACTIONS_SPEC, "townsteadfactions/factions.toml");
 
         // Hook lifecycle tracking to safely run onConfigLoad ONLY after files are verified on disk
         modEventBus.addListener(this::handleConfigEvent);
@@ -58,13 +59,11 @@ public class TownsteadFactions {
             LogManager.info("Network packet stream payload channels established successfully.");
         });
 
-        // EXPLICIT SERVER BUS REGISTRATIONS: Registers your consolidated class cleanly to the global GAME bus
-        NeoForge.EVENT_BUS.register(com.drultralux.townsteadfactions.events.FactionServerEvents.class);
+        FactionServerEvents.registerListeners(NeoForge.EVENT_BUS);
 
-        // EXPLICIT CLIENT BUS REGISTRATIONS: Wires up client setups cleanly without any inner-class nesting annotations
         if (FMLEnvironment.dist == Dist.CLIENT) {
-            modEventBus.register(com.drultralux.townsteadfactions.client.ClientModEvents.ClientModBusEvents.class);
-            NeoForge.EVENT_BUS.register(com.drultralux.townsteadfactions.client.ClientModEvents.ClientGameBusEvents.class);
+            modEventBus.register(ClientModEvents.ClientModBusEvents.class);
+            NeoForge.EVENT_BUS.register(ClientModEvents.ClientGameBusEvents.class);
         }
 
         LogManager.info("Launchpad constructor sequence complete. Processing context transferred.");

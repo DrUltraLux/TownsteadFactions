@@ -29,7 +29,6 @@ public class GlobalFactionsWidget extends DraggableWidget {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
-        // 1. COLLAPSED MINIMIZED VIEWPORT RENDERING ROUTINE
         if (this.isMinimized) {
             int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
             graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
@@ -41,7 +40,6 @@ public class GlobalFactionsWidget extends DraggableWidget {
             return;
         }
 
-        // 2. STANDARD EXPANDED VIEWPORT RENDERING ROUTINE
         int backgroundColor = this.isDragging ? 0xAA3B3B3B : 0xAA222222;
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF666666);

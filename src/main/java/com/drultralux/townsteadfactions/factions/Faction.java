@@ -1,50 +1,52 @@
 package com.drultralux.townsteadfactions.factions;
 
-import com.drultralux.townsteadfactions.LogManager;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 /**
- * Acts as the absolute structural authority representing a single faction domain instance.
- * Governs localized balances, social hierarchy data rosters, and derived account attributes internally.
+ * Data object container representing a singular live faction instance.
+ * Manages currency balances, tracked member UUID profiles, and valid blueprint configurations.
  */
 public class Faction {
-    private final String factionID;
-    private final String displayName;
+    private final String id;
+    private String displayName;
     private UUID leaderUUID;
 
-    // Localized base currency asset indicators
-    private int cogs;
-    private int food;
-    private int mana;
+    // Tracked allowed structural components
+    private final List<String> validOrigins = new ArrayList<>();
+    private final List<UUID> members = new ArrayList<>();
 
-    // Self-contained social grid tracking collections
-    private final Map<UUID, MemberProfile> memberRoster = new HashMap<>();
+    // Faction Currency Metrics called directly by FactionCommands
+    private int cogs = 0;
+    private int food = 0;
+    private int mana = 0;
 
     /**
-     * Instantiates an official object tracking context for a structural faction unit.
+     * Constructs a pristine Faction data tracking instance.
      *
-     * @param factionID the clean programmatic tracking name configuration identifier string
-     * @param displayName the localized text label representation used for front-end rendering displays
-     * @param leaderUUID the unique identifier string representing the absolute leadership authority
+     * @param id          The clean unique identifier key (e.g., "Mages")
+     * @param displayName The human-readable interface title string
+     * @param leaderUUID  The UUID of the managing group leader or system system anchor
      */
-    public Faction(String factionID, String displayName, UUID leaderUUID) {
-        this.factionID = factionID;
-        this.displayName = displayName;
+    public Faction(String id, String displayName, UUID leaderUUID) {
+        this.id = id != null ? id.trim() : "";
+        this.displayName = displayName != null ? displayName.trim() : "";
         this.leaderUUID = leaderUUID;
-
-        // Automatically append the absolute administrator directly to the roster profiles mapping
-        this.memberRoster.put(leaderUUID, new MemberProfile(leaderUUID, FactionTitle.LEADER));
-        LogManager.debug("True Faction domain model initialized. ID: " + factionID + " | Leader: " + leaderUUID);
     }
 
-    public String getFactionID() {
-        return this.factionID;
+    public String getId() {
+        return this.id;
     }
 
     public String getDisplayName() {
         return this.displayName;
+    }
+
+    public void setDisplayName(String displayName) {
+        if (displayName != null) {
+            this.displayName = displayName.trim();
+        }
     }
 
     public UUID getLeaderUUID() {
@@ -52,82 +54,55 @@ public class Faction {
     }
 
     public void setLeaderUUID(UUID leaderUUID) {
-        LogManager.debug("[" + this.factionID + "] Migrating leadership tracking anchor to: " + leaderUUID);
         this.leaderUUID = leaderUUID;
-        addOrUpdateMember(leaderUUID, FactionTitle.LEADER);
+    }
+
+    public List<String> getValidOrigins() {
+        return this.validOrigins;
+    }
+
+    /**
+     * Updates the validated list of allowed Townstead origin strings for this faction structure.
+     */
+    public void setValidOrigins(List<String> origins) {
+        this.validOrigins.clear();
+        if (origins != null) {
+            for (String origin : origins) {
+                if (origin != null && !origin.trim().isEmpty()) {
+                    this.validOrigins.add(origin.trim());
+                }
+            }
+        }
+    }
+
+    public List<UUID> getMembers() {
+        return this.members;
+    }
+
+    /**
+     * Attaches a member directly to this faction registry instance.
+     */
+    public void addMember(UUID playerUUID) {
+        if (playerUUID != null && !this.members.contains(playerUUID)) {
+            this.members.add(playerUUID);
+        }
+    }
+
+    /**
+     * Safely removes a member from this faction profile tracking sheet.
+     */
+    public void removeMember(UUID playerUUID) {
+        if (playerUUID != null) {
+            this.members.remove(playerUUID);
+        }
     }
 
     public int getCogs() { return this.cogs; }
-    public void setCogs(int cogs) { this.cogs = cogs; }
+    public void setCogs(int value) { this.cogs = value; }
 
     public int getFood() { return this.food; }
-    public void setFood(int food) { this.food = food; }
+    public void setFood(int value) { this.food = value; }
 
     public int getMana() { return this.mana; }
-    public void setMana(int mana) { this.mana = mana; }
-
-    /**
-     * Safely updates or appends a structural player identity record to the self-contained collection.
-     *
-     * @param playerUUID the target tracking key profile identifier
-     * @param title the structural hierarchy tier rank to assign
-     */
-    public void addOrUpdateMember(UUID playerUUID, FactionTitle title) {
-        if (this.memberRoster.containsKey(playerUUID)) {
-            this.memberRoster.get(playerUUID).setTitle(title);
-        } else {
-            this.memberRoster.put(playerUUID, new MemberProfile(playerUUID, title));
-            LogManager.debug("[" + this.factionID + "] Member appended to roster: " + playerUUID + " as " + title.name());
-        }
-    }
-
-    /**
-     * Removes an active member registration trace profile out of the tracking roster collections.
-     *
-     * @param playerUUID the target unique identity key token to isolate and drop
-     */
-    public void removeMember(UUID playerUUID) {
-        if (playerUUID.equals(this.leaderUUID)) {
-            LogManager.warn("[" + this.factionID + "] Refusing profile deletion tracking sequence for the root Leader entity.");
-            return;
-        }
-        if (this.memberRoster.remove(playerUUID) != null) {
-            LogManager.debug("[" + this.factionID + "] Removed member profile lookup reference for: " + playerUUID);
-        }
-    }
-
-    /**
-     * Resolves the stored local title level assigned to an identity key inside this faction context.
-     *
-     * @param playerUUID the unique target user identity token to process
-     * @return the localized fallback FactionTitle designation token
-     */
-    public FactionTitle getPlayerLocalTitle(UUID playerUUID) {
-        if (playerUUID.equals(this.leaderUUID)) {
-            return FactionTitle.LEADER;
-        }
-        MemberProfile profile = this.memberRoster.get(playerUUID);
-        return profile != null ? profile.getTitle() : FactionTitle.MEMBER;
-    }
-
-    /**
-     * Exposes the internal immutable tracking collection for external queries or iteration loops.
-     *
-     * @return a mapped reference view containing all encapsulated member profiles
-     */
-    public Map<UUID, MemberProfile> getMemberRoster() {
-        return java.util.Collections.unmodifiableMap(this.memberRoster);
-    }
-
-    /**
-     * Generates a consistent, unique synthetic bank account key derived from the faction ID.
-     *
-     * @return a predictable UUID string representation matching the faction target key namespace
-     */
-    public UUID getTreasuryAccountUUID() {
-        if (this.factionID == null || this.factionID.isEmpty()) {
-            return UUID.fromString("00000000-0000-0000-0000-000000000000");
-        }
-        return UUID.nameUUIDFromBytes(("townstead_faction:" + this.factionID).getBytes());
-    }
+    public void setMana(int value) { this.mana = value; }
 }
