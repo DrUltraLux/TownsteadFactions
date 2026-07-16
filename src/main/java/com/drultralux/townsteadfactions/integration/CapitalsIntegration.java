@@ -1,4 +1,4 @@
-package com.drultralux.townstead_factions.integration;
+package com.drultralux.townsteadfactions.integration;
 
 import net.neoforged.fml.ModList;
 import net.minecraft.server.level.ServerPlayer;

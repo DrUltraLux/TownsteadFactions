@@ -1,4 +1,4 @@
-package com.drultralux.townstead_factions.client.screen;
+package com.drultralux.townsteadfactions.client.screen;
 
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
@@ -8,10 +8,10 @@ import org.lwjgl.glfw.GLFW;
 public class KeyMappings {
 
     public static final KeyMapping OPEN_FACTION_MENU = new KeyMapping(
-            "key.townstead_factions.open_menu",
+            "key.townsteadfactions.open_menu",
             InputConstants.Type.KEYSYM,
             GLFW.GLFW_KEY_F,
-            "key.categories.townstead_factions"
+            "key.categories.townsteadfactions"
     );
 
     public void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {

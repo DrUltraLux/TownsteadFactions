@@ -1,4 +1,4 @@
-package com.drultralux.townstead_factions.config;
+package com.drultralux.townsteadfactions.config;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;

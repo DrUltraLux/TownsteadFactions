@@ -1,6 +1,6 @@
-package com.drultralux.townstead_factions.factions;
+package com.drultralux.townsteadfactions.factions;
 
-import com.drultralux.townstead_factions.integration.CapitalsIntegration;
+import com.drultralux.townsteadfactions.integration.CapitalsIntegration;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
 

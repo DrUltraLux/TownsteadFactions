@@ -1,6 +1,6 @@
-package com.drultralux.townstead_factions.client;
+package com.drultralux.townsteadfactions.client;
 
-import com.drultralux.townstead_factions.TownsteadFactions;
+import com.drultralux.townsteadfactions.TownsteadFactions;
 import net.minecraft.network.FriendlyByteBuf;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;

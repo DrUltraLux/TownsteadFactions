@@ -1,8 +1,8 @@
-package com.drultralux.townstead_factions.client;
+package com.drultralux.townsteadfactions.client;
 
-import com.drultralux.townstead_factions.LogManager;
-import com.drultralux.townstead_factions.client.screen.KeyMappings;
-import com.drultralux.townstead_factions.client.screen.FactionScreen;
+import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.client.screen.KeyMappings;
+import com.drultralux.townsteadfactions.client.screen.FactionScreen;
 import net.minecraft.client.Minecraft;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.bus.api.SubscribeEvent;

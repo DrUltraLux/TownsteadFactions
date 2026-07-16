@@ -1,4 +1,4 @@
-package com.drultralux.townstead_factions.factions;
+package com.drultralux.townsteadfactions.factions;
 
 public enum FactionTitle {
     // DEFAULT CONFIGURATION FALLBACKS
