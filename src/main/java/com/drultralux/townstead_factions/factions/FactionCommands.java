@@ -1,5 +1,6 @@
 package com.drultralux.townstead_factions.factions;
 
+import com.drultralux.townstead_factions.integration.NumismaticsIntegration;
 import com.drultralux.townstead_factions.roots.OriginManager;
 import com.mojang.brigadier.CommandDispatcher;
 import net.minecraft.commands.CommandSourceStack;
@@ -161,7 +162,14 @@ public class FactionCommands {
         }
 
         switch (resType) {
-            case "cogs", "cog" -> faction.setCogs(newVal);
+            case "cogs", "cog" -> {
+                faction.setCogs(newVal);
+                // Dynamically registers balance data into the external mod via the reflection layer
+                NumismaticsIntegration.setFactionCogsBalance(
+                        faction.getTreasuryAccountUUID(),
+                        newVal
+                );
+            }
             case "food" -> faction.setFood(newVal);
             case "mana" -> faction.setMana(newVal);
         }

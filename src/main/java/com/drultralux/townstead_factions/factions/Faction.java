@@ -10,6 +10,7 @@ public class Faction {
     private String cleanName;
     private final Map<UUID, String> members = new HashMap<>(); // UUID -> Rank string ("LEADER", "MEMBER")
     private CompoundTag bannerPattern = new CompoundTag();
+    private UUID treasuryAccountUUID;
 
     // Resource Placeholders
     private int cogsTreasury = 0;
@@ -20,6 +21,7 @@ public class Faction {
         this.factionID = factionID;
         this.cleanName = cleanName;
         this.members.put(creatorUUID, "LEADER"); // First player always defaults to a leader
+        this.treasuryAccountUUID = UUID.randomUUID();
     }
 
     public Faction(CompoundTag tag) {
@@ -82,6 +84,17 @@ public class Faction {
         if (isLeader(operator)) {
             this.bannerPattern = patternTag.copy();
         }
+    }
+
+    public java.util.UUID getTreasuryAccountUUID() {
+        if (this.factionID == null || this.factionID.isEmpty()) {
+            return java.util.UUID.fromString("00000000-0000-0000-0000-000000000000");
+        }
+        return java.util.UUID.nameUUIDFromBytes(("townstead_faction:" + this.factionID).getBytes());
+    }
+
+    public void setTreasuryAccountUUID(UUID uuid) {
+        this.treasuryAccountUUID = uuid;
     }
 
     // --- Getters & Setters ---

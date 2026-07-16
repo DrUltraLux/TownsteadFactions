@@ -175,7 +175,7 @@ public class FactionManager {
             Faction faction = data.getOrCreateFaction(factionID, "Unknown Faction", player.getUUID());
             if (NumismaticsIntegration.isModPresent()) {
                 // Read directly from the external mod's live currency bank account sheet ledger
-                liveCogs = NumismaticsIntegration.getFactionBankAccountBalance(factionID);
+                liveCogs = NumismaticsIntegration.getFactionCogsBalance(faction.getTreasuryAccountUUID(), faction.getCogs());
             } else {
                 liveCogs = faction.getCogs();
             }
