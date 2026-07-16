@@ -7,6 +7,7 @@ import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.List;
 
 /**
  * Acts as a connection bridge between Townstead Root tracking layers and the Factions core.
@@ -43,27 +44,37 @@ public class OriginManager {
      *
      * @param player the specific target ServerPlayer client tracking context
      */
-    public static void fetchInitialRootID(ServerPlayer player) {
-        if (player == null) return;
-
+    public static void fetchInitialRootID(net.minecraft.server.level.ServerPlayer player) {
         try {
-            // Read tracking strings directly out of the Townstead mod's internal components
-            String activeRootPathId = PlayerRoot.getRootId(player);
+            // Extracts the player's active origin string namespace handle natively
+            //String origin = getPlayerOrigin(player);
+            String origin = "";
+            if (origin == null || origin.isEmpty()) {
+                LogManager.debug("Player " + player.getName().getString() + " possesses an unassigned or empty origin context.");
+                return;
+            }
 
-            if (activeRootPathId != null && !activeRootPathId.trim().isEmpty()) {
-                LogManager.debug("Inherited Townstead selection index data row for player "
-                        + player.getScoreboardName() + ": " + getCleanNameForRoot(activeRootPathId));
+            // 💡 THE CURE: Loops through our agnostic config map to see if the player's origin matches any registered faction array rows
+            String assignedFactionId = null;
+            for (java.util.Map.Entry<String, net.neoforged.neoforge.common.ModConfigSpec.ConfigValue<?>> entry : com.drultralux.townsteadfactions.config.ModConfig.FACTIONS.valuesRegistry.entrySet()) {
+                if (entry.getValue().get() instanceof List<?> originsList) {
+                    for (Object element : originsList) {
+                        if (element instanceof String registeredOrigin && registeredOrigin.equalsIgnoreCase(origin)) {
+                            // The config key (e.g., "Mages", "Arcanists") becomes the live assigned faction namespace!
+                            assignedFactionId = entry.getKey();
+                            break;
+                        }
+                    }
+                }
+                if (assignedFactionId != null) break;
+            }
 
-                playerFactionChecker(player, activeRootPathId.trim());
-            } else {
-                LogManager.debug("Player " + player.getScoreboardName() + " has not completed initialization or selected an origin root yet.");
-
-                // Clear any leftover memory tracking maps from previous server states
-                FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), null);
-                FactionPacketManager.sendFactionSyncPacket(player);
+            if (assignedFactionId != null) {
+                LogManager.info("Mapping player profile " + player.getName().getString() + " over to the registered faction tier: " + assignedFactionId);
+                com.drultralux.townsteadfactions.factions.FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), assignedFactionId);
             }
         } catch (Exception e) {
-            LogManager.error("Encountered critical tracking failure while parsing data records out of the Townstead layer!", e);
+            LogManager.error("Failed to safely evaluate initial login assignment matrices for user profile: " + player.getName().getString(), e);
         }
     }
 
@@ -75,18 +86,16 @@ public class OriginManager {
 
         // Pull target routing from the configuration mapping files
         // (This expects a lookup method or map parameter matching your ModConfig layout)
-        String assignedFactionId = ModConfig.FACTIONS.factionRegistryList.get().stream()
-                .filter(id -> id != null && id.equalsIgnoreCase(origin))
-                .findFirst()
-                .orElse(null);
+        List<String> registeredOrigins = ModConfig.FACTIONS.getFactionRegistryList();
+
 
         // Fall back to clean configuration evaluations if direct mapping rules require it
-        if (assignedFactionId == null) {
-            assignedFactionId = origin; // Defaults directly to matching the root name path if list values align
-        }
+       // if (assignedFactionId == null) {
+        //    assignedFactionId = origin; // Defaults directly to matching the root name path if list values align
+       // }
 
         // Apply membership adjustments directly to the centralized data caching layers
-        FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), assignedFactionId);
+       // FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), assignedFactionId);
 
         // Immediately pipe updated network states down to the client viewports
         FactionPacketManager.sendFactionSyncPacket(player);

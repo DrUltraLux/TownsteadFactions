@@ -17,10 +17,10 @@ public class RosterDisplayWidget extends DraggableWidget {
     private final Font font;
 
     /**
-     * Instantiates boundaries and assigns the drawing font context mapping profiles.
+     * Builds out our active roster display element utilizing fixed size dimensions.
      *
-     * @param x positional horizontal origin map coordinate vector
-     * @param y positional vertical origin map coordinate vector
+     * @param x the initial horizontal position vector coordinate
+     * @param y the initial vertical position vector coordinate
      */
     public RosterDisplayWidget(int x, int y) {
         super(x, y, 160, 120);
@@ -29,23 +29,9 @@ public class RosterDisplayWidget extends DraggableWidget {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
-        if (this.isMinimized) {
-            int headerColor = this.isDragging ? 0xEE555555 : 0xEE2A2A2A;
-            graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
-            graphics.renderOutline(this.x, this.y, this.width, 14, 0xFF777777);
-
-            String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[+]" : "§7[+]";
-            graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
-            graphics.drawString(this.font, "§6§lROSTER (COLLAPSED)", this.x + 6, this.y + 3, 0xFFFFFF, false);
-            return;
-        }
-
         int backgroundColor = this.isDragging ? 0xAA555555 : 0xAA2A2A2A;
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF777777);
-
-        String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
-        graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
 
         graphics.drawString(this.font, "§6§lFACTION ROSTER", this.x + 6, this.y + 6, 0xFFFFFF, false);
 
@@ -58,7 +44,7 @@ public class RosterDisplayWidget extends DraggableWidget {
         }
 
         int textOffset = 24;
-        int maxVisibleRows = 6;
+        int maxVisibleRows = 7;
         int rowCounter = 0;
 
         for (Map.Entry<UUID, String> entry : faction.roster.entrySet()) {

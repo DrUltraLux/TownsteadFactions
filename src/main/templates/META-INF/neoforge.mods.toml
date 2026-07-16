@@ -79,7 +79,7 @@ side = "BOTH"
 #openGLVersion="[3.2,)"
 
 # Require Marie's Lib to be installed
-[[dependencies.townstead_factions]]
+[[dependencies.townsteadfactions]]
 modId="marieslib"
 type="required"
 versionRange="[0.1.1-beta.3,)"
@@ -87,7 +87,7 @@ ordering="NONE"
 side="BOTH"
 
 # Require Townstead to be installed
-[[dependencies.townstead_factions]]
+[[dependencies.townsteadfactions]]
 modId="townstead"
 type="required"
 versionRange="[0.7.0+1.21.1,)"

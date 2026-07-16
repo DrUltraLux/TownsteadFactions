@@ -4,33 +4,34 @@ import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * Base abstract window component managing coordinates, drag handlers, and minimize gates.
+ * Defines a self-contained, interactive window component frame capable of relative
+ * position changes, focus tracking, and dynamic mouse drag layout adjustments.
  */
 public abstract class DraggableWidget {
-    /** The horizontal screen space layout coordinate position. */
+    /** The absolute horizontal screen coordinate anchor point. */
     protected int x;
-    /** The vertical screen space layout coordinate position. */
+    /** The absolute vertical screen coordinate anchor point. */
     protected int y;
-    /** The pixel width boundary constraints size of this component window container. */
+    /** The horizontal size boundary dimensions of the window layout box. */
     protected int width;
-    /** The pixel height boundary constraints size of this component window container. */
+    /** The vertical size boundary dimensions of the window layout box. */
     protected int height;
-    /** Toggle state tracking whether this element is actively captured by mouse drag vectors. */
+    /** Condition state tracker indicating if a drag transaction is in progress. */
     protected boolean isDragging = false;
-    /** Toggle state tracking whether this element is collapsed down to its title bar. */
+    /** Condition state tracker indicating if the rendering viewport is collapsed. */
     protected boolean isMinimized = false;
-    /** Relative horizontal capture offset distance calculation metrics. */
+    /** Horizontal vector distance mapping from the pointer click point. */
     protected int dragOffsetX;
-    /** Relative vertical capture offset distance calculation metrics. */
+    /** Vertical vector distance mapping from the pointer click point. */
     protected int dragOffsetY;
 
     /**
-     * Allocates standard dimensional parameters to initialize a viewport window frame.
+     * Allocates standard coordinate anchors to establish a draggable component frame.
      *
-     * @param x initial horizontal viewport pixel vector anchor
-     * @param y initial vertical viewport pixel vector anchor
-     * @param width structural boundary width parameter size
-     * @param height structural boundary height parameter size
+     * @param x the initial horizontal position vector coordinate
+     * @param y the initial vertical position vector coordinate
+     * @param width the default width boundary constraints size
+     * @param height the default height boundary constraints size
      */
     public DraggableWidget(int x, int y, int width, int height) {
         this.x = x;
@@ -40,22 +41,22 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Executes localized background fill maps and element text prints onto canvas layers.
+     * Primary abstract visualization entry point managing pixel output layouts.
      *
-     * @param graphics the current master pipeline canvas proxy engine
-     * @param mouseX active horizontal cursor coordinate intersection point
-     * @param mouseY active vertical cursor coordinate intersection point
-     * @param partialTicks tick synchronization frame delay intervals ratio
-     * @param barRenderer the shared functional MariesLib segment loops utility interface
+     * @param graphics the active core rendering matrix context instance
+     * @param mouseX the current horizontal cursor coordinate layer tracking
+     * @param mouseY the current vertical cursor coordinate layer tracking
+     * @param partialTicks the current intermediate tick frame physics interpolation factor
+     * @param barRenderer the shared functional interface wrapper utilized to draw progress lines
      */
     public abstract void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer);
 
     /**
-     * Evaluates active height vectors to determine cross cursor point overlaps.
+     * Validates if cursor coordinates fall directly inside the active element bounds.
      *
-     * @param mouseX tracking cursor horizontal position parameter
-     * @param mouseY tracking cursor vertical position parameter
-     * @return true if mouse intersects the focus collision bounds box zone
+     * @param mouseX the horizontal coordinate of the pointer
+     * @param mouseY the vertical coordinate of the pointer
+     * @return true if collision detection registers successful boundary intersections
      */
     public boolean isHovered(int mouseX, int mouseY) {
         int currentHeight = this.isMinimized ? 14 : this.height;
@@ -64,11 +65,11 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Tracks collision overlaps specifically targetting the right-side minimize toggle square box.
+     * Validates if cursor coordinates hit the right minimize button rectangle.
      *
-     * @param mouseX horizontal coordinate metric to cross-examine
-     * @param mouseY vertical coordinate metric to cross-examine
-     * @return true if cursor sits inside button dimensions
+     * @param mouseX the horizontal coordinate of the pointer
+     * @param mouseY the vertical coordinate of the pointer
+     * @return true if mouse coordinates collide directly with the minimize icon frame
      */
     public boolean isMinimizeButtonHovered(int mouseX, int mouseY) {
         int btnX = this.x + this.width - 14;
@@ -77,7 +78,12 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Monitors click releases to activate localized state triggers or initial drag vectors.
+     * Direct input click intercept node managing click trigger sequences.
+     *
+     * @param mouseX the target click horizontal position vector
+     * @param mouseY the target click vertical position vector
+     * @param button the tracking index code of the active mouse key pressed
+     * @return true if input focus processing loops consume the click event
      */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -96,7 +102,13 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Processes relative drag increments to actively change layout variables.
+     * Intercepts cursor vector transformations to update spatial coordinates for widgets.
+     *
+     * @param mouseX the tracking vector horizontal pointer coordinate
+     * @param mouseY the tracking vector vertical pointer coordinate
+     * @param button the mouse click integer descriptor code value
+     * @param dragX the net relative change value along the horizontal offset coordinate axis
+     * @param dragY the net relative change value along the vertical offset coordinate axis
      */
     public void mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.isDragging) {
@@ -106,7 +118,11 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Detaches operational click locks when the input trigger clears out.
+     * Standard mouse button release handler node resetting structural tracking locks.
+     *
+     * @param mouseX the final horizontal click coordinate register point
+     * @param mouseY the final vertical click coordinate register point
+     * @param button the target mouse key integer index released
      */
     public void mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -115,24 +131,24 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Fetches the current horizontal layout position vector coordinate.
+     * Pulls the horizontal vector position component for configuration lookups.
      *
-     * @return the horizontal coordinate integer value
+     * @return the active horizontal coordinate integer parameter
      */
     public int getX() { return this.x; }
 
     /**
-     * Fetches the current vertical layout position vector coordinate.
+     * Pulls the vertical vector position component for configuration lookups.
      *
-     * @return the vertical coordinate integer value
+     * @return the active vertical coordinate integer parameter
      */
     public int getY() { return this.y; }
 
     /**
-     * Manually overrides current screen map placements to hard-set fresh vector positions.
+     * Adjusts the absolute spatial drawing coordinates of the container box template.
      *
-     * @param x explicit target horizontal screen vector position
-     * @param y explicit target vertical screen vector position
+     * @param x the new target horizontal vector screen position layer
+     * @param y the new target vertical vector screen position layer
      */
     public void setPosition(int x, int y) { this.x = x; this.y = y; }
 }

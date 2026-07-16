@@ -41,7 +41,7 @@ public class FactionManager {
         LogManager.info("Loading faction registry definitions from configuration maps...");
         this.activeFactions.clear();
 
-        List<? extends String> structuralRegistryIds = ModConfig.FACTIONS.factionRegistryList.get();
+        List<String> structuralRegistryIds = ModConfig.FACTIONS.getFactionRegistryList();
 
         for (String id : structuralRegistryIds) {
             if (id == null || id.trim().isEmpty()) continue;

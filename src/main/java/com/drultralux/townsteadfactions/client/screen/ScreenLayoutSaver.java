@@ -9,23 +9,41 @@ import com.drultralux.townsteadfactions.config.ModConfig;
 public class ScreenLayoutSaver {
 
     /**
-     * Saves the current position of the treasury widget straight to the config values.
-     *
-     * @param x the horizontal position pixel coordinate vector
-     * @param y the vertical position pixel coordinate vector
-     * @param tabIndex the active tab panel index tracking selection
+     * Commits coordinate locations and frame states for your widgets directly down to disk configuration.
      */
-    public static void saveTreasuryPosition(int x, int y, int tabIndex) {
+    public static void saveWidgetLayout(int tx, int ty, int tTab, int rx, int ry, int rTab, int gx, int gy, int gTab, int boxW, int boxH) {
         try {
-            ModConfig.CLIENT.treasuryWidgetX.set(x);
-            ModConfig.CLIENT.treasuryWidgetY.set(y);
-            ModConfig.CLIENT.treasuryWidgetTab.set(tabIndex);
+            // 💡 RECURSIVE SYNTAX: Fetches the config value handles directly from our agnostic registry map via string keys
+            setAgnosticValue("treasuryWidgetX", tx);
+            setAgnosticValue("treasuryWidgetY", ty);
+            setAgnosticValue("treasuryWidgetTab", tTab);
 
-            // Forces NeoForge to flush changes to the townsteadfactions-client.toml file
+            setAgnosticValue("rosterWidgetX", rx);
+            setAgnosticValue("rosterWidgetY", ry);
+            setAgnosticValue("rosterWidgetTab", rTab);
+
+            setAgnosticValue("globalWidgetX", gx);
+            setAgnosticValue("globalWidgetY", gy);
+            setAgnosticValue("globalWidgetTab", gTab);
+
+            setAgnosticValue("mainBoxWidth", boxW);
+            setAgnosticValue("mainBoxHeight", boxH);
+
+            // Saves the newly modified configuration specification directly onto your hard drive
             ModConfig.CLIENT_SPEC.save();
-            LogManager.debug("Treasury widget position cached: Tab " + tabIndex + " (" + x + ", " + y + ")");
+            LogManager.debug("Dynamic window layouts successfully committed to disk files.");
         } catch (Exception e) {
-            LogManager.error("Failed to save layout positions to client config!", e);
+            LogManager.error("Failed to commit operational screen coordinates to configuration!", e);
+        }
+    }
+
+    /**
+     * Internal utility method designed to update values inside our agnostic config registry.
+     */
+    @SuppressWarnings("unchecked")
+    private static <T> void setAgnosticValue(String key, T value) {
+        if (ModConfig.CLIENT.valuesRegistry.containsKey(key)) {
+            ((net.neoforged.neoforge.common.ModConfigSpec.ConfigValue<T>) ModConfig.CLIENT.valuesRegistry.get(key)).set(value);
         }
     }
 }

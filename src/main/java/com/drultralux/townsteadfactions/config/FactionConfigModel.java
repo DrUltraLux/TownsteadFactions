@@ -6,7 +6,6 @@ import java.util.List;
 import java.util.Map;
 
 public class FactionConfigModel {
-    public boolean debugLog = false;
 
     // A LinkedHashMap preserves the visual ordering of factions exactly as written in the JSON file
     public Map<String, List<String>> factions = new LinkedHashMap<>();

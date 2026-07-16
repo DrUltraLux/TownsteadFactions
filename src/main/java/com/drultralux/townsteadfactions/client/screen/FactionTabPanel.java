@@ -9,27 +9,26 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Standard container layer grouping separate widget models together onto isolated tab sheet frames.
+ * Encapsulates an isolated, dynamic tab screen workspace page panel layout.
+ * Houses collections of independent draggable sub-windows to automate compartmentalized rendering loops.
  */
 public class FactionTabPanel {
-    /** The text label printed atop the dashboard navigation header strip buttons layer. */
     private final Component tabTitle;
-    /** Local collections index mapping child window entities tied to this tab environment. */
     private final List<DraggableWidget> components = new ArrayList<>();
 
     /**
-     * Binds a display name signature to an isolated tab panel sheet object container instance.
+     * Instantiates an active viewport layout sheet designated as a standalone UI tab page.
      *
-     * @param tabTitle translated text component label to pass down
+     * @param tabTitle the translated name label displaying over the top selection button
      */
     public FactionTabPanel(Component tabTitle) {
         this.tabTitle = tabTitle;
     }
 
     /**
-     * appends an interactive window item reference layout down into the tracking registry arrays.
+     * Pushes a freshly allocated child widget frame down into the local tracking arrays.
      *
-     * @param widget the child widget component layout object to add
+     * @param widget the target DraggableWidget instance component frame node to insert
      */
     public void addWidget(DraggableWidget widget) {
         if (widget != null && !this.components.contains(widget)) {
@@ -38,22 +37,23 @@ public class FactionTabPanel {
     }
 
     /**
-     * Flushes a target widget trace reference right out of local mapping sheet arrays.
+     * Safely drops an active widget instance out of the local sheet matrix during drag movements.
      *
-     * @param widget target child element profile context to drop
+     * @param widget the target DraggableWidget component instance to disconnect and pull
      */
     public void removeWidget(DraggableWidget widget) {
         this.components.remove(widget);
     }
 
     /**
-     * Loops through tracking tables to execute frame updates across all populated sub-windows.
+     * Iterates down the structural tracking stacks to trigger background frame ticks.
+     * Passes the functional segment drawing tracker directly through the processing chain loops.
      *
-     * @param graphics master engine drawing canvas context pipeline
-     * @param mouseX tracking horizontal cursor pointer pixel position
-     * @param mouseY tracking vertical cursor pointer pixel position
-     * @param partialTicks tick frame synchronization delay coefficient ratio
-     * @param barRenderer the shared functional MariesLib segment loops utility interface passed from screen
+     * @param graphics the core baseline matrix graphics drawing buffer reference
+     * @param mouseX the horizontal coordinate vector tracking text elements
+     * @param mouseY the vertical coordinate vector tracking text elements
+     * @param partialTicks the intermediate physics frame factor index parameter
+     * @param barRenderer the centralized MariesLib utility handling segment line updates
      */
     public void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
         for (DraggableWidget widget : this.components) {
@@ -62,18 +62,18 @@ public class FactionTabPanel {
     }
 
     /**
-     * Returns the base translated text label matching this tab panel instance.
+     * Fetches the translated text component label held by this layout tracking sheet.
      *
-     * @return the localized string text component instance
+     * @return the text title Component interface object pointer reference
      */
     public Component getTabTitle() {
         return this.tabTitle;
     }
 
     /**
-     * Returns an unmodifiable reference tracking all stored sub-component widget layout profiles.
+     * Exposes the raw underlying collection tracking data frames inside the panel view.
      *
-     * @return active tracking list containing children
+     * @return the list container tracking all assigned DraggableWidget objects
      */
     public List<DraggableWidget> getComponents() {
         return this.components;

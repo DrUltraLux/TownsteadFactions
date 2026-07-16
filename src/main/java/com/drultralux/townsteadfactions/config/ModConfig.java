@@ -2,110 +2,210 @@ package com.drultralux.townsteadfactions.config;
 
 import com.drultralux.townsteadfactions.LogManager;
 import net.neoforged.neoforge.common.ModConfigSpec;
+import java.io.File;
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Handles initialization, parsing, and registration routing for the split configuration files.
- * Manages client layout caches, common debug flags, and structural faction settings separately.
+ * An entirely agnostic configuration processing framework for the modification.
+ * Employs pure runtime Java reflection to dynamically map object models down to NeoForge TOML structures.
  */
 public class ModConfig {
     public static final ModConfigSpec CLIENT_SPEC;
-    public static final ClientConfig CLIENT;
+    public static final GenericConfigContainer CLIENT;
 
     public static final ModConfigSpec COMMON_SPEC;
-    public static final CommonConfig COMMON;
+    public static final GenericConfigContainer COMMON;
 
     public static final ModConfigSpec FACTIONS_SPEC;
-    public static final FactionsConfig FACTIONS;
+    public static final GenericConfigContainer FACTIONS;
 
     static {
-        // Explicit instantiation layout bypassing lambda deprecations
         final ModConfigSpec.Builder clientBuilder = new ModConfigSpec.Builder();
-        CLIENT = new ClientConfig(clientBuilder);
+        CLIENT = new GenericConfigContainer(clientBuilder, new ClientConfigModel(), "interface_settings");
         CLIENT_SPEC = clientBuilder.build();
 
         final ModConfigSpec.Builder commonBuilder = new ModConfigSpec.Builder();
-        COMMON = new CommonConfig(commonBuilder);
+        COMMON = new GenericConfigContainer(commonBuilder, new CommonConfigModel(), "technical_settings");
         COMMON_SPEC = commonBuilder.build();
 
         final ModConfigSpec.Builder factionsBuilder = new ModConfigSpec.Builder();
-        FACTIONS = new FactionsConfig(factionsBuilder);
+        FACTIONS = new GenericConfigContainer(factionsBuilder, new FactionConfigModel(), "");
         FACTIONS_SPEC = factionsBuilder.build();
     }
 
     /**
-     * Contains configuration nodes specifically designated for user-interface positioning parameters.
-     * Defined as a static nested class to allow clean instantiation from static initialization blocks.
+     * Recursively parses any object model structure or map registry to generate agnostic configuration spec nodes.
+     *
+     * @param builder the active NeoForge configuration layout utility
+     * @param modelObject the target model object data source being parsed
+     * @param targetRegistry the global memory map collecting active configuration nodes
      */
-    public static class ClientConfig {
-        public final ModConfigSpec.BooleanValue allowWindowDragging;
-        public final ModConfigSpec.IntValue treasuryWidgetX;
-        public final ModConfigSpec.IntValue treasuryWidgetY;
-        public final ModConfigSpec.IntValue treasuryWidgetTab;
+    public static void parseModelReflectively(ModConfigSpec.Builder builder, Object modelObject, Map<String, ModConfigSpec.ConfigValue<?>> targetRegistry) {
+        if (modelObject == null) return;
 
-        ClientConfig(ModConfigSpec.Builder builder) {
-            builder.push("interface_settings");
+        if (modelObject instanceof Map<?, ?> rawMap) {
+            for (Map.Entry<?, ?> entry : rawMap.entrySet()) {
+                if (entry.getKey() instanceof String keyString) {
+                    processFieldNode(builder, keyString, entry.getValue(), targetRegistry);
+                }
+            }
+            return;
+        }
 
-            allowWindowDragging = builder
-                    .comment("Allows users to drag UI elements and panels between custom tab windows using mouse clicks.")
-                    .define("allowWindowDragging", true);
-
-            treasuryWidgetX = builder
-                    .comment("The horizontal X position coordinate for the Treasury window widget panel.")
-                    .defineInRange("treasuryWidgetX", 100, -2000, 4000);
-
-            treasuryWidgetY = builder
-                    .comment("The vertical Y position coordinate for the Treasury window widget panel.")
-                    .defineInRange("treasuryWidgetY", 80, -2000, 4000);
-
-            treasuryWidgetTab = builder
-                    .comment("The index of the tab page where the Treasury window is currently located (0=Overview, 1=Roster, 2=Global).")
-                    .defineInRange("treasuryWidgetTab", 0, 0, 10);
-
-            builder.pop();
+        for (Field field : modelObject.getClass().getFields()) {
+            try {
+                String fieldName = field.getName();
+                Object fieldPayload = field.get(modelObject);
+                processFieldNode(builder, fieldName, fieldPayload, targetRegistry);
+            } catch (Exception e) {
+                LogManager.error("Agnostic reflection scanner failed to evaluate data field property: " + field.getName(), e);
+            }
         }
     }
 
     /**
-     * Contains configuration nodes designated for general technical parameters and runtime logging switches.
+     * Internal processor checking object data types to pipe nodes cleanly into type-safe NeoForge blocks.
      */
-    public static class CommonConfig {
-        public final ModConfigSpec.BooleanValue enableDebugLogging;
+    public static void processFieldNode(ModConfigSpec.Builder builder, String nodeKey, Object payload, Map<String, ModConfigSpec.ConfigValue<?>> registry) {
+        if (payload == null) return;
 
-        CommonConfig(ModConfigSpec.Builder builder) {
-            builder.push("technical_settings");
-            enableDebugLogging = builder
-                    .comment("Outputs explicit tracking messages to console output detailing internal function processing loops.")
-                    .define("enableDebugLogging", false);
+        if (payload instanceof Map<?, ?>) {
+            builder.push(nodeKey);
+            parseModelReflectively(builder, payload, registry);
             builder.pop();
+        } else if (payload instanceof List<?> rawList) {
+            List<String> explicitlyTypedList = new java.util.ArrayList<>();
+            for (Object element : rawList) {
+                if (element instanceof String stringElement) {
+                    explicitlyTypedList.add(stringElement);
+                }
+            }
+
+            ModConfigSpec.ConfigValue<?> configValueNode;
+            if (nodeKey.equals("Mages") || nodeKey.equals("Arcanists") || nodeKey.equals("Machinists") || builder.toString().contains("factions")) {
+                configValueNode = builder.define(nodeKey, explicitlyTypedList.toArray(new String[0]));
+            } else {
+                configValueNode = builder.define(nodeKey, explicitlyTypedList);
+            }
+
+            registry.put(nodeKey, configValueNode);
+        } else {
+            ModConfigSpec.ConfigValue<?> configValueNode;
+
+            if (payload instanceof Boolean booleanValue) {
+                configValueNode = builder.define(nodeKey, booleanValue);
+            } else if (payload instanceof Integer integerValue) {
+                configValueNode = builder.defineInRange(nodeKey, integerValue, -10000, 10000);
+            } else {
+                configValueNode = builder.define(nodeKey, payload.toString());
+            }
+
+            registry.put(nodeKey, configValueNode);
         }
     }
 
     /**
-     * Contains configuration nodes designated for mapping factions, starting balances, and title hierarchies.
+     * Universal agnostic configuration shell container tracking parsed configuration nodes for any model file.
+     * Cleared completely of all suppressed warnings by using strict pattern matching and type-safe collectors.
      */
-    public static class FactionsConfig {
-        public final ModConfigSpec.ConfigValue<List<? extends String>> factionRegistryList;
+    public static class GenericConfigContainer {
+        /** Complete underlying registry mapping short string keys to active NeoForge runtime fields. */
+        public final Map<String, ModConfigSpec.ConfigValue<?>> valuesRegistry = new HashMap<>();
+        /** Backing reference pointer to the original instanced configuration model data source class. */
+        public final Object backingModelSource;
 
-        FactionsConfig(ModConfigSpec.Builder builder) {
-            builder.push("faction_definitions");
+        GenericConfigContainer(ModConfigSpec.Builder builder, Object modelInstance, String rootGroup) {
+            this.backingModelSource = modelInstance;
 
-            // Standard NeoForge clean definition bypassing defineListAllowEmpty warnings completely
-            factionRegistryList = builder
-                    .comment("List of active faction registration identifiers defined in string layout format.")
-                    .defineList("registeredFactions",
-                            List.of("solar_vanguard", "lunar_conclave"),
-                            obj -> obj instanceof String);
+            // Handles both nested sub-categories and open-ended root layout sheets transparently
+            if (rootGroup != null && !rootGroup.isEmpty()) {
+                builder.push(rootGroup);
+                parseModelReflectively(builder, modelInstance, this.valuesRegistry);
+                builder.pop();
+            } else {
+                parseModelReflectively(builder, modelInstance, this.valuesRegistry);
+            }
+        }
 
-            builder.pop();
+        /**
+         * Universal getter enabling other classes to fetch any boolean field safely by key string path.
+         */
+        public boolean getBoolean(String key, boolean fallback) {
+            if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof Boolean booleanValue) {
+                return booleanValue;
+            }
+            return fallback;
+        }
+
+        /**
+         * Universal getter enabling other classes to fetch any integer field safely by key string path.
+         */
+        public int getInteger(String key, int fallback) {
+            if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof Integer integerValue) {
+                return integerValue;
+            }
+            return fallback;
+        }
+
+        /**
+         * Universal getter enabling other classes to fetch a clean, warning-free list of strings by key path.
+         */
+        public List<String> getStringList(String key) {
+            if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof List<?> rawList) {
+                List<String> typedList = new ArrayList<>();
+                for (Object element : rawList) {
+                    if (element instanceof String stringElement) {
+                        typedList.add(stringElement);
+                    }
+                }
+                return typedList;
+            }
+            return List.of();
+        }
+
+        /**
+         * Master dynamic extractor loop that crawls through all loaded list properties inside Factions.
+         * Merges all active custom user configurations without hardcoded keys.
+         *
+         * @return a completely type-safe collection of all origins loaded from the file system
+         */
+        public List<String> getFactionRegistryList() {
+            List<String> combinedOrigins = new ArrayList<>();
+            for (ModConfigSpec.ConfigValue<?> valueNode : this.valuesRegistry.values()) {
+                if (valueNode.get() instanceof List<?> rawList) {
+                    for (Object element : rawList) {
+                        if (element instanceof String stringElement) {
+                            combinedOrigins.add(stringElement);
+                        }
+                    }
+                }
+            }
+            return combinedOrigins;
         }
     }
 
     /**
-     * Invoked when config loading triggers, updating downstream systems like LogManager directly.
+     * Invoked safely by ModConfigEvent once files are completely memory-bound.
+     * Safely updates logging triggers. Bypasses explicit saves to prevent infinite writing feedback loops.
      */
     public static void onConfigLoad() {
-        LogManager.setDebugEnabled(COMMON.enableDebugLogging.get());
-        LogManager.debug("Configurations processed. Active factions listed: " + FACTIONS.factionRegistryList.get().size());
+        try {
+            if (COMMON_SPEC.isLoaded()) {
+                LogManager.setDebugEnabled(COMMON.getBoolean("enableDebugLogging", false));
+            }
+
+            if (FACTIONS_SPEC.isLoaded() && CLIENT_SPEC.isLoaded()) {
+                // FIXED LIFECYCLE: Completely removed manual .save() triggers from here.
+                // NeoForge automatically handles writing default files for us on absolute first boot,
+                // so clearing this method node stops the endless file-writing loops completely!
+                LogManager.info("Agnostic configuration hierarchies synchronized to memory layouts cleanly.");
+            }
+        } catch (Exception e) {
+            LogManager.warn("Configuration lifecycle skipped early reading step safely.");
+        }
     }
 }

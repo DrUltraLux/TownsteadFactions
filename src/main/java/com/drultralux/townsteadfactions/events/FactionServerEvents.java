@@ -1,45 +1,59 @@
 package com.drultralux.townsteadfactions.events;
 
 import com.drultralux.townsteadfactions.LogManager;
-import com.drultralux.townsteadfactions.TownsteadFactions;
+import com.drultralux.townsteadfactions.factions.FactionCommands;
 import com.drultralux.townsteadfactions.factions.FactionSavedData;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.roots.OriginManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.SubscribeEvent;
-import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
-import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
 /**
- * Centrally manages unified game-loop subscriptions and player pipeline triggers.
- * Automatically hooks straight into the main NeoForge FORGE event bus layer.
+ * Centrally manages unified server-side game-loop subscriptions and player pipeline triggers.
+ * Explicitly mapped via the main launchpad constructor to run safely on the NeoForge GAME bus.
  */
-@EventBusSubscriber(modid = TownsteadFactions.MODID)
 public class FactionServerEvents {
 
     /**
-     * Listens for world boot triggers to automatically re-inflate stored faction states from disk files.
+     * Listens for world boot triggers once dimensions are fully memory-initialized
+     * to safely re-inflate stored faction states from disk files.
+     *
+     * @param event the structural starting event provided by the NeoForge server framework
      */
     @SubscribeEvent
-    public static void onServerAboutToStart(ServerAboutToStartEvent event) {
-        LogManager.info("World lifecycle boot sequence intercepted. Launching persistence worker pipeline...");
-        // This triggers FactionSavedData which automatically pulls config definitions before file inflation
+    public static void onServerStarting(ServerStartingEvent event) {
+        LogManager.info("World dimensions loaded. Running persistence worker pipeline...");
         FactionSavedData.get(event.getServer());
     }
 
     /**
+     * Catches the command registration event to append administrative and player slash nodes.
+     *
+     * @param event the command registration context supplied by the server engine
+     */
+    @SubscribeEvent
+    public static void onRegisterCommands(net.neoforged.neoforge.event.RegisterCommandsEvent event) {
+        LogManager.info("Injecting player and administrative faction command routing nodes...");
+        FactionCommands.register(event.getDispatcher());
+    }
+
+    /**
      * Intercepts server connection pathways to automatically route players through evaluation engines.
+     *
+     * @param event the player login context supplied by the server engine
      */
     @SubscribeEvent
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
             LogManager.debug("Processing login pipeline logic for player profile: " + player.getName().getString());
 
-            // 1. Cross-examine user attributes straight against the active Townstead Root capability maps
+            // Cross-examine user attributes straight against the active Townstead Root capability maps
             OriginManager.fetchInitialRootID(player);
 
-            // 2. Dispatch a clean, high-capacity data matrix payload straight to their interface screen
+            // Dispatch a clean, high-capacity data matrix payload straight to their interface screen
             FactionPacketManager.sendFactionSyncPacket(player);
         }
     }
