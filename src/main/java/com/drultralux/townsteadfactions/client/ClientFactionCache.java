@@ -25,7 +25,6 @@ public class ClientFactionCache {
     public static void readSyncStream(net.minecraft.nbt.CompoundTag nbt) {
         if (nbt == null) return;
 
-        //Extract local player resource values using our specific NBT keys
         assignedFactionId = nbt.getString("assignedFactionId");
         cogs = nbt.getInt("cogs");
         food = nbt.getInt("food");
@@ -33,17 +32,22 @@ public class ClientFactionCache {
 
         cachedFactions.clear();
 
-        if (nbt.contains("globalFactionRosterCounts", 10)) {
+        if (nbt.contains("globalFactionRosterCounts", 10)) { // 10 matches NBT Compound Tag types
             net.minecraft.nbt.CompoundTag rosterNbt = nbt.getCompound("globalFactionRosterCounts");
             for (String id : rosterNbt.getAllKeys()) {
-                int memberCount = rosterNbt.getInt(id);
-
                 if (id != null) {
                     ClientFactionData data = new ClientFactionData();
                     data.id = id.trim();
                     data.name = com.drultralux.townsteadfactions.roots.OriginManager.getCleanName(id.trim());
-                    for (int i = 0; i < memberCount; i++) {
-                        data.roster.put(UUID.randomUUID(), "Faction Member");
+
+                    //(Type 9 is ListTag)
+                    if (rosterNbt.contains(id, 9)) {
+                        net.minecraft.nbt.ListTag namesList = rosterNbt.getList(id, 8); // 8 is StringTag type identifier
+                        for (int i = 0; i < namesList.size(); i++) {
+                            String realUsername = namesList.getString(i);
+                            // Store using a reproducible placeholder UUID tag pattern
+                            data.roster.put(UUID.nameUUIDFromBytes(realUsername.getBytes()), realUsername);
+                        }
                     }
 
                     cachedFactions.put(data.id, data);
@@ -51,7 +55,8 @@ public class ClientFactionCache {
             }
         }
 
-        LogManager.debug("Client cache updated successfully via NBT block. Assigned Faction: {"+assignedFactionId+"}");    }
+        LogManager.debug("Client cache updated successfully via name network stream. Assigned Faction: {"+assignedFactionId+"}");
+    }
 
     public static String getAssignedFactionId() {
         return assignedFactionId;

@@ -25,13 +25,13 @@ public class ScreenLayoutSaver {
             setAgnosticValue("globalWidgetY", gy);
             setAgnosticValue("globalWidgetTab", gTab);
 
-            setAgnosticValue("globalWidgetX", ax);
-            setAgnosticValue("globalWidgetY", ay);
-            setAgnosticValue("globalWidgetTab", aTab);
+            setAgnosticValue("avatarWidgetX", ax);
+            setAgnosticValue("avatarWidgetY", ay);
+            setAgnosticValue("avatarWidgetTab", aTab);
 
-            setAgnosticValue("globalWidgetX", lx);
-            setAgnosticValue("globalWidgetY", ly);
-            setAgnosticValue("globalWidgetTab", lTab);
+            setAgnosticValue("activityWidgetX", lx);
+            setAgnosticValue("activityWidgetY", ly);
+            setAgnosticValue("activityWidgetTab", lTab);
 
             setAgnosticValue("mainBoxWidth", boxW);
             setAgnosticValue("mainBoxHeight", boxH);

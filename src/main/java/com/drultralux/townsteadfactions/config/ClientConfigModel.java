@@ -35,6 +35,14 @@ public class ClientConfigModel {
         interfaceSettings.put("globalWidgetY", 10);
         interfaceSettings.put("globalWidgetTab", 2);
 
+        interfaceSettings.put("avatarWidgetX", 26);
+        interfaceSettings.put("avatarWidgetY", 40);
+        interfaceSettings.put("avatarWidgetTab", 0);
+
+        interfaceSettings.put("activityWidgetX", 26);
+        interfaceSettings.put("activityWidgetY", 90);
+        interfaceSettings.put("activityWidgetTab", 0);
+
         // Translated Tab Names Selection Index Strings
         List<String> defaultTabOrder = new ArrayList<>();
         defaultTabOrder.add("OVERVIEW;Overview");

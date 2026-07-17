@@ -1,6 +1,7 @@
 package com.drultralux.townsteadfactions.client.screen;
 
 import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.client.KeyMappings;
 import com.drultralux.townsteadfactions.client.screen.widget.*;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import dev.marie.MariesLib.client.GuiValueRenderer;
@@ -263,7 +264,7 @@ public class FactionScreen extends Screen {
 
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (com.drultralux.townsteadfactions.client.KeyMappings.OPEN_FACTION_DASHBOARD.matches(keyCode, scanCode) || keyCode == 256) {
+        if (KeyMappings.OPEN_FACTION_DASHBOARD.matches(keyCode, scanCode) || keyCode == 256) {
             this.onClose();
             return true;
         }
