@@ -53,7 +53,7 @@ public class TownsteadFactions {
                     FactionSyncPayload.STREAM_CODEC,
                     (payload, context) -> context.enqueueWork(() -> {
                         LogManager.debug("Received a high-capacity data matrix packet stream from the server.");
-                        ClientFactionCache.readSyncStream(payload.dataStreamTag());
+                        ClientFactionCache.readSyncStream(payload.factionId(), payload.cogs(), payload.food(), payload.mana(), payload.globalFactions());
                     })
             );
             LogManager.info("Network packet stream payload channels established successfully.");

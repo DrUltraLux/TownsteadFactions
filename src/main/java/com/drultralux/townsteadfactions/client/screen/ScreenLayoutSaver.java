@@ -11,7 +11,7 @@ public class ScreenLayoutSaver {
     /**
      * Commits coordinate locations and frame states for your widgets directly down to disk configuration.
      */
-    public static void saveWidgetLayout(int tx, int ty, int tTab, int rx, int ry, int rTab, int gx, int gy, int gTab, int boxW, int boxH) {
+    public static void saveWidgetLayout(int tx, int ty, int tTab, int rx, int ry, int rTab, int gx, int gy, int gTab, int ax, int ay, int aTab, int lx, int ly, int lTab, int boxW, int boxH) {
         try {
             setAgnosticValue("treasuryWidgetX", tx);
             setAgnosticValue("treasuryWidgetY", ty);
@@ -24,6 +24,14 @@ public class ScreenLayoutSaver {
             setAgnosticValue("globalWidgetX", gx);
             setAgnosticValue("globalWidgetY", gy);
             setAgnosticValue("globalWidgetTab", gTab);
+
+            setAgnosticValue("globalWidgetX", ax);
+            setAgnosticValue("globalWidgetY", ay);
+            setAgnosticValue("globalWidgetTab", aTab);
+
+            setAgnosticValue("globalWidgetX", lx);
+            setAgnosticValue("globalWidgetY", ly);
+            setAgnosticValue("globalWidgetTab", lTab);
 
             setAgnosticValue("mainBoxWidth", boxW);
             setAgnosticValue("mainBoxHeight", boxH);

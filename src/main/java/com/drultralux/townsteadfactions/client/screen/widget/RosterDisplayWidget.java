@@ -6,63 +6,70 @@ import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
+import net.minecraft.world.entity.player.Player;
 
 import java.util.Map;
 import java.util.UUID;
 
 /**
- * A draggable dashboard interface component showing faction membership tables.
+ * Handles roster listings, extracting localized user display names from UUID tokens.
  */
 public class RosterDisplayWidget extends DraggableWidget {
     private final Font font;
 
-    /**
-     * Builds out our active roster display element utilizing fixed size dimensions.
-     *
-     * @param x the initial horizontal position vector coordinate
-     * @param y the initial vertical position vector coordinate
-     */
     public RosterDisplayWidget(int x, int y) {
-        super(x, y, 160, 120);
+        // Aligned bounding box footprint (150 width by 75 height)
+        super(x, y, 150, 75);
         this.font = Minecraft.getInstance().font;
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
-        int backgroundColor = this.isDragging ? 0xAA555555 : 0xAA2A2A2A;
-        graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
-        graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF777777);
+        graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x66000000);
+        graphics.renderOutline(this.x, this.y, this.x + this.width, this.y + this.height, 0xFF444444);
 
-        graphics.drawString(this.font, "§6§lFACTION ROSTER", this.x + 6, this.y + 6, 0xFFFFFF, false);
+        if (this.isMinimized) return;
 
-        String activeId = ClientFactionCache.getAssignedFactionId();
-        ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
+        String rosterHeader = "FACTION ROSTER";
+        graphics.drawString(this.font, Component.literal(rosterHeader), this.x + 6, this.y + 5, 0xFFA200, false);
+        graphics.fill(this.x + 4, this.y + 14, this.x + this.width - 4, this.y + 15, 0xFF333333);
 
-        if (faction == null || faction.roster.isEmpty()) {
-            graphics.drawString(this.font, "§7No members found.", this.x + 8, this.y + 24, 0xAAAAAA, false);
-            return;
-        }
+        String currentFactionId = ClientFactionCache.getAssignedFactionId();
+        Map<String, ClientFactionData> cachedMap = ClientFactionCache.getCachedFactions();
+        ClientFactionData factionData = cachedMap.get(currentFactionId);
 
-        int textOffset = 24;
-        int maxVisibleRows = 7;
-        int rowCounter = 0;
+        Minecraft mc = Minecraft.getInstance();
+        int currentYOffset = this.y + 18;
+        if (factionData != null && factionData.roster != null && !factionData.roster.isEmpty()) {
+            for (UUID memberUUID : factionData.roster.keySet()) {
+                if (memberUUID == null) continue;
 
-        for (Map.Entry<UUID, String> entry : faction.roster.entrySet()) {
-            String shortUuid = entry.getKey().toString().substring(0, 8) + "...";
-            String titleRole = entry.getValue();
+                String displayName;
+                Player levelPlayer = mc.level != null ? mc.level.getPlayerByUUID(memberUUID) : null;
 
-            String formatPattern = titleRole.equalsIgnoreCase("LEADER") || titleRole.equalsIgnoreCase("MONARCH")
-                    ? "§e★ " + shortUuid + " (§6" + titleRole + "§e)"
-                    : "§7• " + shortUuid + " (§b" + titleRole + "§7)";
+                if (levelPlayer != null) {
+                    displayName = levelPlayer.getName().getString();
+                } else if (memberUUID.equals(mc.player.getUUID())) {
+                    displayName = mc.player.getName().getString();
+                } else {
+                    // Fallback snippet format if the user record represents an offline player or dummy mock token
+                    String rawString = memberUUID.toString();
+                    displayName = "Player_" + rawString.substring(0, 5);
+                }
 
-            graphics.drawString(this.font, formatPattern, this.x + 8, this.y + textOffset, 0xFFFFFF, false);
-            textOffset += 13;
-            rowCounter++;
+                String lineEntry = "§7• §f" + displayName + " §a(Member)";
+                graphics.drawString(this.font, Component.literal(lineEntry), this.x + 10, currentYOffset, 0xFFFFFF, false);
 
-            if (rowCounter >= maxVisibleRows) {
-                graphics.drawString(this.font, "§8+ " + (faction.roster.size() - maxVisibleRows) + " more...", this.x + 8, this.y + textOffset, 0x888888, false);
-                break;
+                currentYOffset += 10;
+
+                // Prevent names from overflowing out of the bounding bottom frame box outlines
+                if (currentYOffset >= this.y + this.height - 8) {
+                    break;
+                }
             }
+        } else {
+            graphics.drawString(this.font, Component.literal("§cNo members cached."), this.x + 10, currentYOffset, 0xFFFFFF, false);
         }
     }
 }

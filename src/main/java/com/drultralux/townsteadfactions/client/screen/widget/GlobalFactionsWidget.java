@@ -6,22 +6,15 @@ import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
-
+import net.minecraft.network.chat.Component;
 import java.util.Map;
 
 /**
  * A draggable dashboard interface component showing all discovered server factions.
- * Displays faction names, leadership identities, and member population densities.
  */
 public class GlobalFactionsWidget extends DraggableWidget {
     private final Font font;
 
-    /**
-     * Allocates specific bounding dimensions to build the world factions overview frame.
-     *
-     * @param x the initial horizontal rendering coordinate tracking vector
-     * @param y the initial vertical rendering coordinate tracking vector
-     */
     public GlobalFactionsWidget(int x, int y) {
         super(x, y, 180, 120);
         this.font = Minecraft.getInstance().font;
@@ -29,55 +22,47 @@ public class GlobalFactionsWidget extends DraggableWidget {
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
-        if (this.isMinimized) {
-            int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
-            graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
-            graphics.renderOutline(this.x, this.y, this.width, 14, 0xFF555555);
 
-            String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[+]" : "§7[+]";
-            graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
-            graphics.drawString(this.font, "§6§lWORLD FACTIONS (MIN)", this.x + 6, this.y + 3, 0xFFFFFF, false);
+        // Draw the main widget background panel bounding borders
+        graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x99000000);
+        graphics.renderOutline(this.x, this.y, this.x + this.width, this.y + this.height, 0xFF555555);
+
+        String titleText = "§6=== Factions Overview ===";
+        graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, 0xFFFFFF, true);
+
+        if (this.isMinimized) {
+            String minimizedText = "§7[Minimized]";
+            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, 0xFFFFFF, true);
             return;
         }
-
-        int backgroundColor = this.isDragging ? 0xAA3B3B3B : 0xAA222222;
-        graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
-        graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF666666);
-
-        String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
-        graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
-
-        graphics.drawString(this.font, "§6§lDISCOVERED FACTIONS", this.x + 6, this.y + 6, 0xFFFFFF, false);
 
         Map<String, ClientFactionData> globalFactions = ClientFactionCache.getCachedFactions();
         String currentFactionId = ClientFactionCache.getAssignedFactionId();
 
-        if (globalFactions.isEmpty()) {
-            graphics.drawString(this.font, "§7No world profiles cached.", this.x + 8, this.y + 24, 0xAAAAAA, false);
+        int currentYOffset = this.y + 22;
+
+        if (globalFactions == null || globalFactions.isEmpty()) {
+            graphics.drawString(this.font, Component.literal("§cNo factions loaded."), this.x + 12, currentYOffset, 0xFFFFFF, true);
             return;
         }
-
-        int textOffset = 24;
-        int maxRows = 6;
-        int rowCounter = 0;
-
         for (ClientFactionData faction : globalFactions.values()) {
-            boolean isOwnFaction = faction.id.equalsIgnoreCase(currentFactionId);
+            if (faction == null || faction.id == null) continue;
 
             // Apply bright visual indicators if the row is the player's own group
+            boolean isOwnFaction = faction.id.equalsIgnoreCase(currentFactionId);
+
+            // Evaluates your true custom variables: faction.name and faction.roster.size() safely
             String rowString = isOwnFaction
                     ? "§a✔ §e" + faction.name + " §7(" + faction.roster.size() + ")"
                     : "§7• §f" + faction.name + " §7(" + faction.roster.size() + ")";
 
-            graphics.drawString(this.font, rowString, this.x + 8, this.y + textOffset, 0xFFFFFF, false);
-            textOffset += 14;
-            rowCounter++;
+            graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, 0xFFFFFF, true);
 
-            if (rowCounter >= maxRows) {
-                int hiddenCount = globalFactions.size() - maxRows;
-                if (hiddenCount > 0) {
-                    graphics.drawString(this.font, "§8+ " + hiddenCount + " additional groups...", this.x + 8, this.y + textOffset, 0x666666, false);
-                }
+            // Advance the cursor downward for sequentially indexed rows
+            currentYOffset += 12;
+
+            // Prevent text strings from bleeding past the physical height bounding lines of the element frame box
+            if (currentYOffset >= this.y + this.height - 10) {
                 break;
             }
         }

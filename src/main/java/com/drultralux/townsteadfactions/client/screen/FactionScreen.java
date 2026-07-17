@@ -1,10 +1,7 @@
 package com.drultralux.townsteadfactions.client.screen;
 
 import com.drultralux.townsteadfactions.LogManager;
-import com.drultralux.townsteadfactions.client.screen.widget.DraggableWidget;
-import com.drultralux.townsteadfactions.client.screen.widget.ResourceDisplayWidget;
-import com.drultralux.townsteadfactions.client.screen.widget.RosterDisplayWidget;
-import com.drultralux.townsteadfactions.client.screen.widget.GlobalFactionsWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.*;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.gui.GuiGraphics;
@@ -46,6 +43,10 @@ public class FactionScreen extends Screen {
     private RosterDisplayWidget rosterWidget;
     /** Reference pointer to the synchronized world factions overview window widget instance. */
     private GlobalFactionsWidget globalWidget;
+    /** Reference pointer to the synchronized avatar overview window widget instance. */
+    private PlayerModelWidget avatarWidget;
+    /** Reference pointer to the synchronized activity window widget instance. */
+    private ActivityLogWidget activityWidget;
 
     /**
      * A single, reusable MariesLib functional instance handling all segment drawing loops.
@@ -96,10 +97,14 @@ public class FactionScreen extends Screen {
         this.treasuryWidget = new ResourceDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("treasuryWidgetX", -50), mainY + 40 + ModConfig.CLIENT.getInteger("treasuryWidgetY", -30));
         this.rosterWidget = new RosterDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("rosterWidgetX", 40), mainY + 40 + ModConfig.CLIENT.getInteger("rosterWidgetY", -10));
         this.globalWidget = new GlobalFactionsWidget(mainX + 20 + ModConfig.CLIENT.getInteger("globalWidgetX", -100), mainY + 40 + ModConfig.CLIENT.getInteger("globalWidgetY", 10));
+        this.avatarWidget = new PlayerModelWidget(mainX + 20 + ModConfig.CLIENT.getInteger("avatarWidgetX", 20), mainY + 40 + ModConfig.CLIENT.getInteger("avatarWidgetY", -10));
+        this.activityWidget = new ActivityLogWidget(mainX + 20 + ModConfig.CLIENT.getInteger("activityWidgetX", -40), mainY + 40 + ModConfig.CLIENT.getInteger("activityWidgetY", 90));
 
         routeWidgetToTab(this.treasuryWidget, ModConfig.CLIENT.getInteger("treasuryWidgetTab", 0));
         routeWidgetToTab(this.rosterWidget, ModConfig.CLIENT.getInteger("rosterWidgetTab", 1));
         routeWidgetToTab(this.globalWidget, ModConfig.CLIENT.getInteger("globalWidgetTab", 2));
+        routeWidgetToTab(this.avatarWidget, ModConfig.CLIENT.getInteger("avatarWidgetTab", 0));
+        routeWidgetToTab(this.activityWidget, ModConfig.CLIENT.getInteger("activityWidgetTab", 0));
     }
 
     /**
@@ -280,11 +285,16 @@ public class FactionScreen extends Screen {
         int tTab = findWidgetTabLocation(this.treasuryWidget);
         int rTab = findWidgetTabLocation(this.rosterWidget);
         int gTab = findWidgetTabLocation(this.globalWidget);
+        int aTab = findWidgetTabLocation(this.avatarWidget);
+        int logTab = findWidgetTabLocation(this.activityWidget);
 
         ScreenLayoutSaver.saveWidgetLayout(
                 this.treasuryWidget.getX() - mainX - 20, this.treasuryWidget.getY() - mainY - 40, tTab,
                 this.rosterWidget.getX() - mainX - 20, this.rosterWidget.getY() - mainY - 40, rTab,
                 this.globalWidget.getX() - mainX - 20, this.globalWidget.getY() - mainY - 40, gTab,
+                this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, aTab,
+                this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, logTab,
+
                 this.boxWidth, this.boxHeight
         );
     }

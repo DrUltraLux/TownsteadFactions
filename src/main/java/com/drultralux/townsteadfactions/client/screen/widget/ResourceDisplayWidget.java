@@ -7,6 +7,7 @@ import dev.marie.MariesLib.client.MarieValueColors;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.network.chat.Component;
 
 /**
  * A specialized draggable sub-window panel element that displays synchronized live economy counts.
@@ -35,7 +36,7 @@ public class ResourceDisplayWidget extends DraggableWidget {
 
             String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[+]" : "§7[+]";
             graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
-            graphics.drawString(this.font, "§6§lTREASURY (MINIMIZED)", this.x + 6, this.y + 3, 0xFFFFFF, false);
+            graphics.drawString(this.font, "§6§lSTATISTICS (MIN)", this.x + 6, this.y + 3, 0xFFFFFF, false);
             return;
         }
 
@@ -50,9 +51,9 @@ public class ResourceDisplayWidget extends DraggableWidget {
         ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
 
         int factionSize = (faction != null) ? faction.roster.size() : 0;
-        int liveCogs = (faction != null) ? faction.cogs : 0;
-        int liveFood = (faction != null) ? faction.food : 0;
-        int liveMana = (faction != null) ? faction.mana : 0;
+        int liveCogs = ClientFactionCache.getCogs();
+        int liveFood = ClientFactionCache.getFood();
+        int liveMana = ClientFactionCache.getMana();
 
         int powerColor = MarieValueColors.baseColorArgb("power");
         int shipsColor = MarieValueColors.baseColorArgb("ships");
@@ -60,27 +61,32 @@ public class ResourceDisplayWidget extends DraggableWidget {
         int foodColor = MarieValueColors.baseColorArgb("food");
         int manaColor = MarieValueColors.baseColorArgb("mana");
 
+        float cogsPercent = Math.min(1.0F, Math.max(0.0F, (float) liveCogs / 10.0F));
+        float foodPercent = Math.min(1.0F, Math.max(0.0F, (float) liveFood / 10.0F));
+        float manaPercent = Math.min(1.0F, Math.max(0.0F, (float) liveMana / 10.0F));
+
         // --- Left Data Column Layer Elements ---
-        graphics.drawString(this.font, "§b§lPOWER & MILITARY", this.x + 6, this.y + 6, 0xFFFFFF, false);
-        graphics.drawString(this.font, "Members: " + factionSize, this.x + 8, this.y + 18, 0xAAAAAA, false);
+        graphics.drawString(this.font, Component.literal("§bPOWER"), this.x + 8, this.y + 6, 0xFFFFFF, false);
+        graphics.drawString(this.font, Component.literal("Members: " + factionSize), this.x + 8, this.y + 18, 0xAAAAAA, false);
 
-        renderSegmentedBlocks(graphics, this.x + 8, this.y + 28, (factionSize > 0) ? factionSize / 100.0f : 0.0f, powerColor);
+        renderSegmentedBlocks(graphics, this.x + 8, this.y + 28, (factionSize > 6) ? factionSize / 100.0F : 0.6F, powerColor);
 
-        graphics.drawString(this.font, "Airships Active", this.x + 8, this.y + 42, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, this.x + 8, this.y + 52, 0.5f, shipsColor);
+        graphics.drawString(this.font, Component.literal("Airships"), this.x + 8, this.y + 42, 0xAAAAAA, false);
+        renderSegmentedBlocks(graphics, this.x + 8, this.y + 52, (float) shipsColor, shipsColor);
 
         // --- Right Data Column Layer Elements ---
         int col2X = this.x + 115;
-        graphics.drawString(this.font, "§e§lTREASURY LEDGER", col2X, this.y + 6, 0xFFFFFF, false);
+        graphics.drawString(this.font, Component.literal("§eRESOURCES"), col2X, this.y + 6, 0xFFFFFF, false);
 
-        graphics.drawString(this.font, "Cogs: " + liveCogs, col2X, this.y + 18, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, col2X, this.y + 28, liveCogs / 10.0f, cogsColor);
+        graphics.drawString(this.font, Component.literal("Treasury:"), col2X, this.y + 18, 0xAAAAAA, false);
+        // 💡 THE CURE: Pass your calculated percentage variables straight into the segment renderers!
+        renderSegmentedBlocks(graphics, col2X, this.y + 28, cogsPercent, cogsColor);
 
-        graphics.drawString(this.font, "Food Supplies", col2X, this.y + 42, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, col2X, this.y + 52, liveFood / 10.0f, foodColor);
+        graphics.drawString(this.font, Component.literal("Food Supplies"), col2X, this.y + 42, 0xAAAAAA, false);
+        renderSegmentedBlocks(graphics, col2X, this.y + 52, foodPercent, foodColor);
 
-        graphics.drawString(this.font, "Mana Stockpile", col2X, this.y + 66, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, col2X, this.y + 76, liveMana / 10.0f, manaColor);
+        graphics.drawString(this.font, Component.literal("Mana Stockpile"), col2X, this.y + 66, 0xAAAAAA, false);
+        renderSegmentedBlocks(graphics, col2X, this.y + 76, manaPercent, manaColor);
     }
 
     /**
