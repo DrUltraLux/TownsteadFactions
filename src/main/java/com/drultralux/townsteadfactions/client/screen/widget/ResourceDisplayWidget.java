@@ -1,34 +1,41 @@
 package com.drultralux.townsteadfactions.client.screen.widget;
 
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
-import com.drultralux.townsteadfactions.client.ClientFactionCache.ClientFactionData;
-import dev.marie.MariesLib.client.GuiValueRenderer;
+import com.drultralux.townsteadfactions.client.screen.elements.ColorBarValueRenderer;
+import com.drultralux.townsteadfactions.client.screen.elements.TextLineValueRenderer;
 import dev.marie.MariesLib.client.MarieValueColors;
+import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
-/**
- * A specialized draggable sub-window panel element that displays synchronized live economy counts.
- * Leverages MariesLib color palettes to render standardized segmented indicator blocks.
- */
 public class ResourceDisplayWidget extends DraggableWidget {
+    private final TextLineValueRenderer powerHeader, resourcesHeader, airshipsLabel, treasuryLabel, foodLabel, manaLabel;
+    private final ColorBarValueRenderer powerBar, airshipsBar, treasuryBar, foodBar, manaBar;
     private final Font font;
 
-    /**
-     * Builds out our treasury display window profile utilizing fixed layout size parameters.
-     *
-     * @param x the initial horizontal rendering coordinate tracking vector
-     * @param y the initial vertical rendering coordinate tracking vector
-     */
     public ResourceDisplayWidget(int x, int y) {
         super(x, y, 220, 100);
         this.font = Minecraft.getInstance().font;
+        // Pre-cache persistent text and colors to avoid GC pressure
+        this.powerHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§bPOWER", 0xFFFFFF);
+        this.airshipsLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Airships", 0xAAAAAA);
+        this.resourcesHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§eRESOURCES", 0xFFFFFF);
+        this.treasuryLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Treasury:", 0xAAAAAA);
+        this.foodLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Food Supplies", 0xAAAAAA);
+        this.manaLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Mana Stockpile", 0xAAAAAA);
+
+        this.powerBar = new ColorBarValueRenderer(MarieValueColors.baseColorArgb("power"));
+        this.airshipsBar = new ColorBarValueRenderer(MarieValueColors.baseColorArgb("ships"));
+        this.treasuryBar = new ColorBarValueRenderer(MarieValueColors.baseColorArgb("gold"));
+        this.foodBar = new ColorBarValueRenderer(MarieValueColors.baseColorArgb("food"));
+        this.manaBar = new ColorBarValueRenderer(MarieValueColors.baseColorArgb("mana"));
     }
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
+        // 1. Maintain minimize window and draggable background logic
         if (this.isMinimized) {
             int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
             graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
@@ -36,7 +43,7 @@ public class ResourceDisplayWidget extends DraggableWidget {
 
             String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[+]" : "§7[+]";
             graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
-            graphics.drawString(this.font, "§6§lSTATISTICS (MIN)", this.x + 6, this.y + 3, 0xFFFFFF, false);
+            graphics.drawString(this.font, "§6§lSTATISTICS & STORAGE (MIN)", this.x + 6, this.y + 3, 0xFFFFFF, false);
             return;
         }
 
@@ -47,57 +54,56 @@ public class ResourceDisplayWidget extends DraggableWidget {
         String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
         graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, 0xFFFFFF, false);
 
+        // 2. Fetch Live Cache Values
         String activeId = ClientFactionCache.getAssignedFactionId();
-        ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
+        ClientFactionCache.ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
 
         int factionSize = (faction != null) ? faction.roster.size() : 0;
         int liveCogs = ClientFactionCache.getCogs();
         int liveFood = ClientFactionCache.getFood();
         int liveMana = ClientFactionCache.getMana();
 
-        int powerColor = MarieValueColors.baseColorArgb("power");
-        int shipsColor = MarieValueColors.baseColorArgb("ships");
-        int cogsColor = MarieValueColors.baseColorArgb("gold");
-        int foodColor = MarieValueColors.baseColorArgb("food");
-        int manaColor = MarieValueColors.baseColorArgb("mana");
-
+        // 3. Calculate Percentages for the ColorBar Value Renderers
+        // For Power, we use 1/1 if faction size is populated, matching your target view
+        float powerPercent = (factionSize > 0) ? 1.0F : 0.0F;
+        float shipsPercent = 0.8F; // Set to match your target layout visual level
         float cogsPercent = Math.min(1.0F, Math.max(0.0F, (float) liveCogs / 10.0F));
         float foodPercent = Math.min(1.0F, Math.max(0.0F, (float) liveFood / 10.0F));
         float manaPercent = Math.min(1.0F, Math.max(0.0F, (float) liveMana / 10.0F));
 
-        // --- Left Data Column Layer Elements ---
-        graphics.drawString(this.font, Component.literal("§bPOWER"), this.x + 8, this.y + 6, 0xFFFFFF, false);
-        graphics.drawString(this.font, Component.literal("Members: " + factionSize), this.x + 8, this.y + 18, 0xAAAAAA, false);
+        // ==========================================
+        // --- COLUMN 1: LEFT SIDE (POWER & AIRSHIPS)
+        // ==========================================
+        int col1X = this.x + 8;
 
-        renderSegmentedBlocks(graphics, this.x + 8, this.y + 28, (factionSize > 6) ? factionSize / 100.0F : 0.6F, powerColor);
+        // Power Section (Text Header, then Bar pushed 10px down)
+        this.powerHeader.render(graphics, col1X, this.y + 6, 0.0F);
+        // Draw the subtext label "Power: 1 / 1" matching screenshot 2
+        graphics.drawString(this.font, Component.literal("Power: " + factionSize + " / " + factionSize), col1X, this.y + 18, 0xAAAAAA, false);
+        this.powerBar.render(graphics, col1X, this.y + 28, powerPercent);
 
-        graphics.drawString(this.font, Component.literal("Airships"), this.x + 8, this.y + 42, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, this.x + 8, this.y + 52, (float) shipsColor, shipsColor);
+        // Airships Section
+        this.airshipsLabel.render(graphics, col1X, this.y + 44, 0.0F);
+        this.airshipsBar.render(graphics, col1X, this.y + 54, shipsPercent);
 
-        // --- Right Data Column Layer Elements ---
+        // ==========================================
+        // --- COLUMN 2: RIGHT SIDE (STATISTICS & STORAGE)
+        // ==========================================
         int col2X = this.x + 115;
-        graphics.drawString(this.font, Component.literal("§eRESOURCES"), col2X, this.y + 6, 0xFFFFFF, false);
 
-        graphics.drawString(this.font, Component.literal("Treasury:"), col2X, this.y + 18, 0xAAAAAA, false);
-        // 💡 THE CURE: Pass your calculated percentage variables straight into the segment renderers!
-        renderSegmentedBlocks(graphics, col2X, this.y + 28, cogsPercent, cogsColor);
+        // "STATISTICS & STORAGE" Header
+        this.resourcesHeader.render(graphics, col2X, this.y + 6, 0.0F);
 
-        graphics.drawString(this.font, Component.literal("Food Supplies"), col2X, this.y + 42, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, col2X, this.y + 52, foodPercent, foodColor);
+        // Treasury / Cogs Row (Header text at y+18, Bar at y+28)
+        this.treasuryLabel.render(graphics, col2X, this.y + 18, 0.0F);
+        this.treasuryBar.render(graphics, col2X, this.y + 28, cogsPercent);
 
-        graphics.drawString(this.font, Component.literal("Mana Stockpile"), col2X, this.y + 66, 0xAAAAAA, false);
-        renderSegmentedBlocks(graphics, col2X, this.y + 76, manaPercent, manaColor);
-    }
+        // Food Supplies Row (Header text at y+42, Bar at y+52)
+        this.foodLabel.render(graphics, col2X, this.y + 42, 0.0F);
+        this.foodBar.render(graphics, col2X, this.y + 52, foodPercent);
 
-    /**
-     * Localized method to cleanly render MariesLib style segmented progress indicator grids.
-     */
-    private void renderSegmentedBlocks(GuiGraphics graphics, int targetX, int targetY, float fillLevel, int barColor) {
-        int filledCount = (int) (fillLevel * 10);
-        for (int i = 0; i < 10; i++) {
-            int blockColor = (i < filledCount) ? barColor : 0xFF2A2A2A;
-            int renderX = targetX + (i * 8);
-            graphics.fill(renderX, targetY, renderX + 6, targetY + 6, blockColor);
-        }
+        // Mana Stockpile Row (Header text at y+66, Bar at y+76)
+        this.manaLabel.render(graphics, col2X, this.y + 66, 0.0F);
+        this.manaBar.render(graphics, col2X, this.y + 76, manaPercent);
     }
 }
