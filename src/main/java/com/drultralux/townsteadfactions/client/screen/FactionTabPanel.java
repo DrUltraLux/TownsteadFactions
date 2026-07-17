@@ -57,7 +57,7 @@ public class FactionTabPanel {
      */
     public void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
         for (DraggableWidget widget : this.components) {
-            widget.render(graphics, mouseX, mouseY, partialTicks, barRenderer);
+            widget.render(graphics, mouseX, mouseY, partialTicks);
         }
     }
 

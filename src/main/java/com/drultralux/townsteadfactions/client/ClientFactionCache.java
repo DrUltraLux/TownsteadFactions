@@ -1,5 +1,6 @@
 package com.drultralux.townsteadfactions.client;
 
+import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.roots.OriginManager;
 import java.util.HashMap;
 import java.util.Map;
@@ -19,26 +20,28 @@ public class ClientFactionCache {
     private static int mana = 0;
 
     /**
-     * Natively ingests streamed record parameters from the network layer to refresh the client overview.
+     * Ingests the network packet's unified NBT compound to safely refresh client data matrices.
      */
-    public static void readSyncStream(String factionId, int syncedCogs, int syncedFood, int syncedMana, Map<String, Integer> globalFactions) {
-        assignedFactionId = factionId != null ? factionId.trim() : "none";
-        cogs = syncedCogs;
-        food = syncedFood;
-        mana = syncedMana;
+    public static void readSyncStream(net.minecraft.nbt.CompoundTag nbt) {
+        if (nbt == null) return;
+
+        //Extract local player resource values using our specific NBT keys
+        assignedFactionId = nbt.getString("assignedFactionId");
+        cogs = nbt.getInt("cogs");
+        food = nbt.getInt("food");
+        mana = nbt.getInt("mana");
 
         cachedFactions.clear();
-        if (globalFactions != null) {
-            for (Map.Entry<String, Integer> entry : globalFactions.entrySet()) {
-                String id = entry.getKey();
-                Integer memberCount = entry.getValue();
 
-                if (id != null && memberCount != null) {
+        if (nbt.contains("globalFactionRosterCounts", 10)) {
+            net.minecraft.nbt.CompoundTag rosterNbt = nbt.getCompound("globalFactionRosterCounts");
+            for (String id : rosterNbt.getAllKeys()) {
+                int memberCount = rosterNbt.getInt(id);
+
+                if (id != null) {
                     ClientFactionData data = new ClientFactionData();
                     data.id = id.trim();
-                    data.name = OriginManager.getCleanName(id.trim());
-
-                    // 💡 THE CURE: Populate as a Map to support roster.size() and roster.entrySet() concurrently!
+                    data.name = com.drultralux.townsteadfactions.roots.OriginManager.getCleanName(id.trim());
                     for (int i = 0; i < memberCount; i++) {
                         data.roster.put(UUID.randomUUID(), "Faction Member");
                     }
@@ -47,7 +50,8 @@ public class ClientFactionCache {
                 }
             }
         }
-    }
+
+        LogManager.debug("Client cache updated successfully via NBT block. Assigned Faction: {"+assignedFactionId+"}");    }
 
     public static String getAssignedFactionId() {
         return assignedFactionId;
@@ -67,7 +71,6 @@ public class ClientFactionCache {
     public static class ClientFactionData {
         public String id;
         public String name;
-        // 💡 THE CURE: Declared as a Map to perfectly satisfy RosterDisplayWidget entry sets!
         public final Map<UUID, String> roster = new HashMap<>();
     }
 }

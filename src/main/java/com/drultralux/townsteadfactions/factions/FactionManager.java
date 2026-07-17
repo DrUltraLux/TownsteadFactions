@@ -104,6 +104,46 @@ public class FactionManager {
         }
     }
 
+    /**
+     * Finds the faction ID that a player belongs to by scanning active runtime faction rosters.
+     */
+    public static String getPlayerFactionId(UUID playerUUID) {
+        if (playerUUID == null) return null;
+        for (Faction faction : getInstance().getActiveFactions().values()) {
+            if (faction.getMembers().contains(playerUUID)) {
+                return faction.getId(); // Assuming getMembers() and getId() exist on Faction
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Gets a specific asset balance for a player's faction without exposing the Faction instance.
+     * assetType can be "cogs", "food", or "mana".
+     */
+    public static int getPlayerFactionAsset(java.util.UUID playerUUID, String assetType) {
+        String factionId = getPlayerFactionId(playerUUID);
+        if (factionId == null) return 0;
+        Faction faction = getInstance().getActiveFactions().get(factionId);
+        if (faction == null) return 0;
+
+        return switch (assetType.toLowerCase()) {
+            case "cogs" -> faction.getCogs();
+            case "food" -> faction.getFood();
+            case "mana" -> faction.getMana();
+            default -> 0;
+        };
+    }
+
+    /**
+     * Gets the total member count of a specific faction by its unique identifier string.
+     */
+    public static int getFactionMemberCount(String factionId) {
+        if (factionId == null) return 0;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        return (faction != null && faction.getMembers() != null) ? faction.getMembers().size() : 0;
+    }
+
     public Map<String, Faction> getActiveFactions() {
         return this.activeFactions;
     }

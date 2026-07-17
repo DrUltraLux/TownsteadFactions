@@ -4,6 +4,7 @@ import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.client.screen.widget.*;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import dev.marie.MariesLib.client.GuiValueRenderer;
+import dev.marie.MariesLib.client.MarieValueColors;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;

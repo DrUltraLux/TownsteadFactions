@@ -1,6 +1,8 @@
 package com.drultralux.townsteadfactions.events;
 
 import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.client.FactionSyncPayload;
+import com.drultralux.townsteadfactions.factions.Faction;
 import com.drultralux.townsteadfactions.factions.FactionCommands;
 import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.factions.FactionSavedData;
@@ -77,6 +79,16 @@ public class FactionServerEvents {
         if (event.getEntity() instanceof ServerPlayer player) {
             LogManager.info("Player logged in: " + player.getName().getString() + ". Resolving faction parameters...");
             OriginManager.fetchInitialRootID(player);
+            FactionPacketManager.sendFactionDataToClient(player);
+        }
+    }
+
+    /**
+     * Force-syncs an individual player's cache with the server's real data state.
+     */
+    public static void syncPlayerFactionData(ServerPlayer player) {
+        if (player != null) {
+            // Natively delegate the complete live database packet transmission downstream
             FactionPacketManager.sendFactionDataToClient(player);
         }
     }

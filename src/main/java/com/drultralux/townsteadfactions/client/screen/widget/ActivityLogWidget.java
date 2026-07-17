@@ -1,5 +1,6 @@
 package com.drultralux.townsteadfactions.client.screen.widget;
 
+import com.drultralux.townsteadfactions.client.screen.FactionPalette;
 import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -17,26 +18,23 @@ public class ActivityLogWidget extends DraggableWidget {
         super(x, y, 210, 60);
         this.font = Minecraft.getInstance().font;
 
-        this.activityLog.add("• DrUltraLux opened the interface screen.");
-        this.activityLog.add("• Server payload channel synchronized.");
-        this.activityLog.add("• Local capability profiles initialized.");
         this.activityLog.add("• Database registries parsed cleanly.");
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x66000000);
-        graphics.renderOutline(this.x, this.y, this.x + this.width, this.y + this.height, 0xFF444444);
+        graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF444444);
 
         if (this.isMinimized) return;
 
         String logHeader = "⚙ FACTION LOG";
-        graphics.drawString(this.font, Component.literal(logHeader), this.x + 6, this.y + 5, 0xFFA200, false);
+        graphics.drawString(this.font, Component.literal(logHeader), this.x + 6, this.y + 5, FactionPalette.getBarColor( "text_gold"), false);
         graphics.fill(this.x + 4, this.y + 14, this.x + this.width - 4, this.y + 15, 0xFF333333);
 
         int currentYOffset = this.y + 18;
         for (String logLine : this.activityLog) {
-            graphics.drawString(this.font, Component.literal(logLine), this.x + 8, currentYOffset, 0x999999, false);
+            graphics.drawString(this.font, Component.literal(logLine), this.x + 8, currentYOffset, FactionPalette.getBarColor( "text_blue"), false);
             currentYOffset += 9;
             if (currentYOffset >= this.y + this.height - 6) break;
         }

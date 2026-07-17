@@ -2,6 +2,7 @@ package com.drultralux.townsteadfactions.client.screen.widget;
 
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
 import com.drultralux.townsteadfactions.client.ClientFactionCache.ClientFactionData;
+import com.drultralux.townsteadfactions.client.screen.FactionPalette;
 import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
@@ -21,18 +22,18 @@ public class GlobalFactionsWidget extends DraggableWidget {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
 
         // Draw the main widget background panel bounding borders
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x99000000);
-        graphics.renderOutline(this.x, this.y, this.x + this.width, this.y + this.height, 0xFF555555);
+        graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF555555);
 
-        String titleText = "§6=== Factions Overview ===";
-        graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, 0xFFFFFF, true);
+        String titleText = "§6=== Factions ===";
+        graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, FactionPalette.getBarColor( "text_gold"), true);
 
         if (this.isMinimized) {
-            String minimizedText = "§7[Minimized]";
-            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, 0xFFFFFF, true);
+            String minimizedText = "§7Factions [Min]";
+            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, FactionPalette.getBarColor( "text_gold"), true);
             return;
         }
 
@@ -42,7 +43,7 @@ public class GlobalFactionsWidget extends DraggableWidget {
         int currentYOffset = this.y + 22;
 
         if (globalFactions == null || globalFactions.isEmpty()) {
-            graphics.drawString(this.font, Component.literal("§cNo factions loaded."), this.x + 12, currentYOffset, 0xFFFFFF, true);
+            graphics.drawString(this.font, Component.literal("§cNo factions loaded."), this.x + 12, currentYOffset, FactionPalette.getBarColor( "text_blue"), true);
             return;
         }
         for (ClientFactionData faction : globalFactions.values()) {
@@ -56,7 +57,7 @@ public class GlobalFactionsWidget extends DraggableWidget {
                     ? "§a✔ §e" + faction.name + " §7(" + faction.roster.size() + ")"
                     : "§7• §f" + faction.name + " §7(" + faction.roster.size() + ")";
 
-            graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, 0xFFFFFF, true);
+            graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, FactionPalette.getBarColor( "text_blue"), true);
 
             // Advance the cursor downward for sequentially indexed rows
             currentYOffset += 12;

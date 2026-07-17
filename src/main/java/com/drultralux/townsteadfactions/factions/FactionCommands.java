@@ -1,6 +1,8 @@
 package com.drultralux.townsteadfactions.factions;
 
+import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.roots.OriginManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -124,7 +126,7 @@ public class FactionCommands {
             ServerPlayer player = source.getPlayerOrException();
             UUID playerUUID = player.getUUID();
 
-            String playerRootId = com.aetherianartificer.townstead.root.PlayerRoot.getRootId(player);
+            String playerRootId = PlayerRoot.getRootId(player);
             String cleanOriginName = OriginManager.getCleanName(playerRootId);
 
             Faction assignedFaction = null;
@@ -155,7 +157,7 @@ public class FactionCommands {
             LogManager.info("Forcing runtime origin profile reconciliation sync for player: " + player.getName().getString());
 
             OriginManager.fetchInitialRootID(player);
-            com.drultralux.townsteadfactions.network.FactionPacketManager.sendFactionDataToClient(player);
+            FactionPacketManager.sendFactionDataToClient(player);
 
             source.sendSuccess(() -> Component.literal("§aSuccessfully updated and re-synchronized faction alignments against config states."), false);
             return 1;

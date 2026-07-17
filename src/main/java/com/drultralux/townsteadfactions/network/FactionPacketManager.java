@@ -3,10 +3,9 @@ package com.drultralux.townsteadfactions.network;
 import com.drultralux.townsteadfactions.client.FactionSyncPayload;
 import com.drultralux.townsteadfactions.factions.Faction;
 import com.drultralux.townsteadfactions.factions.FactionManager;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
-
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
 
@@ -24,34 +23,26 @@ public class FactionPacketManager {
      */
     public static void sendFactionDataToClient(ServerPlayer player) {
         if (player == null) return;
-        UUID playerUUID = player.getUUID();
+        java.util.UUID playerUUID = player.getUUID();
 
-        Faction playerFaction = null;
-        Map<String, Faction> serverFactionsMap = FactionManager.getInstance().getActiveFactions();
+        String factionId = FactionManager.getPlayerFactionId(playerUUID);
 
-        for (Faction faction : serverFactionsMap.values()) {
-            if (faction.getMembers() != null && faction.getMembers().contains(playerUUID)) {
-                playerFaction = faction;
-                break;
+        CompoundTag nbt = new CompoundTag();
+        nbt.putString("assignedFactionId", (factionId != null) ? factionId : "none");
+
+        nbt.putInt("cogs", FactionManager.getPlayerFactionAsset(playerUUID, "cogs"));
+        nbt.putInt("food", FactionManager.getPlayerFactionAsset(playerUUID, "food"));
+        nbt.putInt("mana", FactionManager.getPlayerFactionAsset(playerUUID, "mana"));
+
+        CompoundTag rosterNbt = new CompoundTag();
+        java.util.Set<String> factionIds = FactionManager.getInstance().getActiveFactions().keySet();
+        for (String id : factionIds) {
+            if (id != null) {
+                rosterNbt.putInt(id, FactionManager.getFactionMemberCount(id));
             }
         }
+        nbt.put("globalFactionRosterCounts", rosterNbt);
 
-        String assignedFactionId = (playerFaction != null) ? playerFaction.getId() : "none";
-
-        Map<String, Integer> globalFactionRosterCounts = new HashMap<>();
-        for (Map.Entry<String, Faction> entry : serverFactionsMap.entrySet()) {
-            if (entry.getKey() != null && entry.getValue() != null) {
-                int count = entry.getValue().getMembers() != null ? entry.getValue().getMembers().size() : 0;
-                globalFactionRosterCounts.put(entry.getKey().trim(), count);
-            }
-        }
-        int cogs = (playerFaction != null) ? playerFaction.getCogs() : 0;
-        int food = (playerFaction != null) ? playerFaction.getFood() : 0;
-        int mana = (playerFaction != null) ? playerFaction.getMana() : 0;
-
-        PacketDistributor.sendToPlayer(
-                player,
-                new FactionSyncPayload(assignedFactionId, cogs, food, mana, globalFactionRosterCounts)
-        );
+        PacketDistributor.sendToPlayer(player, new FactionSyncPayload(nbt));
     }
 }

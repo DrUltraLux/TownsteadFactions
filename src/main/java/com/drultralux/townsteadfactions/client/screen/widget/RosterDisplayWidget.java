@@ -25,9 +25,9 @@ public class RosterDisplayWidget extends DraggableWidget {
     }
 
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x66000000);
-        graphics.renderOutline(this.x, this.y, this.x + this.width, this.y + this.height, 0xFF444444);
+        graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF444444);
 
         if (this.isMinimized) return;
 

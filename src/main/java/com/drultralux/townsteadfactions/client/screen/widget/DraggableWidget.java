@@ -47,9 +47,8 @@ public abstract class DraggableWidget {
      * @param mouseX the current horizontal cursor coordinate layer tracking
      * @param mouseY the current vertical cursor coordinate layer tracking
      * @param partialTicks the current intermediate tick frame physics interpolation factor
-     * @param barRenderer the shared functional interface wrapper utilized to draw progress lines
      */
-    public abstract void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer);
+    public abstract void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks);
 
     /**
      * Validates if cursor coordinates fall directly inside the active element bounds.

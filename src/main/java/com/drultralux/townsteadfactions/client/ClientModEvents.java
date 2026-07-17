@@ -1,10 +1,12 @@
 package com.drultralux.townsteadfactions.client;
 
 import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.client.screen.FactionPalette;
 import com.drultralux.townsteadfactions.client.screen.FactionScreen;
 import com.drultralux.townsteadfactions.client.KeyMappings;
 import net.minecraft.client.Minecraft;
 import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
 import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
@@ -28,6 +30,11 @@ public class ClientModEvents {
         public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
             LogManager.info("Injecting faction dashboard keyboard shortcuts into user config lists...");
             event.register(KeyMappings.OPEN_FACTION_DASHBOARD);
+        }
+
+        @SubscribeEvent
+        public static void onClientSetup(FMLClientSetupEvent event) {
+            FactionPalette.init();
         }
     }
 

@@ -53,9 +53,11 @@ public class TownsteadFactions {
                     FactionSyncPayload.STREAM_CODEC,
                     (payload, context) -> context.enqueueWork(() -> {
                         LogManager.debug("Received a high-capacity data matrix packet stream from the server.");
-                        ClientFactionCache.readSyncStream(payload.factionId(), payload.cogs(), payload.food(), payload.mana(), payload.globalFactions());
+                        // Pass the unified NBT compound container straight down to your client cache system
+                        ClientFactionCache.readSyncStream(payload.nbtData());
                     })
             );
+
             LogManager.info("Network packet stream payload channels established successfully.");
         });
 
