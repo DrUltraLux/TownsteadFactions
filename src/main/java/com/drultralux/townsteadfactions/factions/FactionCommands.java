@@ -124,26 +124,17 @@ public class FactionCommands {
     private static int executeDisplay(CommandSourceStack source) {
         try {
             ServerPlayer player = source.getPlayerOrException();
-            UUID playerUUID = player.getUUID();
-
+            java.util.UUID playerUUID = player.getUUID();
             String playerRootId = PlayerRoot.getRootId(player);
             String cleanOriginName = OriginManager.getCleanName(playerRootId);
 
-            Faction assignedFaction = null;
-            Map<String, Faction> activeMap = FactionManager.getInstance().getActiveFactions();
-            for (Faction faction : activeMap.values()) {
-                if (faction.getMembers() != null && faction.getMembers().contains(playerUUID)) {
-                    assignedFaction = faction;
-                    break;
-                }
-            }
-
-            String factionDisplay = (assignedFaction != null) ? assignedFaction.getDisplayName() : "None Assigned";
+            // Access data strictly via encapsulation—no local Faction variables or map loops!
+            String factionDisplay = FactionManager.getPlayerFactionDisplayName(playerUUID);
 
             source.sendSuccess(() -> Component.literal("§b--- Your Profile Parameters ---" +
-                    "\n§7Selected rootID: §f" + playerRootId +
-                    "\n§7Clean Origin: §f" + cleanOriginName +
-                    "\n§7Assigned Faction: §a" + factionDisplay), false);
+                    "\n §7Selected rootID: §f" + playerRootId +
+                    "\n §7Clean Origin: §f" + cleanOriginName +
+                    "\n §7Assigned Faction: §a" + factionDisplay), false);
             return 1;
         } catch (Exception e) {
             source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
@@ -157,7 +148,9 @@ public class FactionCommands {
             LogManager.info("Forcing runtime origin profile reconciliation sync for player: " + player.getName().getString());
 
             OriginManager.fetchInitialRootID(player);
-            FactionPacketManager.sendFactionDataToClient(player);
+
+            // Forces an instantaneous network transmission of the client's cache assets
+            com.drultralux.townsteadfactions.network.FactionPacketManager.sendFactionDataToClient(player);
 
             source.sendSuccess(() -> Component.literal("§aSuccessfully updated and re-synchronized faction alignments against config states."), false);
             return 1;
@@ -168,82 +161,55 @@ public class FactionCommands {
     }
 
     private static int executeResourceMath(CommandSourceStack source, String rawResource, String factionId, int amount, MathOp operation) {
-        if (factionId == null || rawResource == null) return 0;
-
-        Faction faction = FactionManager.getInstance().getActiveFactions().get(factionId.trim());
-        if (faction == null) {
-            source.sendFailure(Component.literal("Error: Faction identifier '" + factionId + "' does not match active live setups."));
+        if (factionId == null || rawResource == null || operation == null) {
             return 0;
+        }
+
+        // Delegate calculations and state-saving to the manager layer
+        int resultStatus = FactionManager.executeEncapsulatedAssetMath(
+                factionId,
+                rawResource,
+                amount,
+                operation.name()
+        );
+
+        if (resultStatus == 0) {
+            source.sendFailure(Component.literal("Error: Faction identifier '" + factionId + "' or resource metrics could not be validated."));
+            return 0;
+        }
+
+        if (source.getEntity() instanceof ServerPlayer player) {
+          FactionPacketManager.sendFactionDataToClient(player);
         }
 
         String targetResource = rawResource.toLowerCase().trim();
-        int currentBalance;
-
-        if (targetResource.equals("cogs") || targetResource.equals("cog")) {
-            currentBalance = faction.getCogs();
-            faction.setCogs(calculateTargetValue(currentBalance, amount, operation));
-        } else if (targetResource.equals("food")) {
-            currentBalance = faction.getFood();
-            faction.setFood(calculateTargetValue(currentBalance, amount, operation));
-        } else if (targetResource.equals("mana")) {
-            currentBalance = faction.getMana();
-            faction.setMana(calculateTargetValue(currentBalance, amount, operation));
-        } else {
-            source.sendFailure(Component.literal("Invalid resource target. Supported metrics: cogs, food, mana"));
-            return 0;
-        }
-
-        source.sendSuccess(() -> Component.literal("§a[Admin] Successfully processed " + operation.name() + " operation on faction §f" + faction.getDisplayName() + " §a" + targetResource), true);
+        source.sendSuccess(() -> Component.literal("§a[Admin] Successfully processed " + operation.name() + " operation on faction §f" + factionId.trim() + " §a" + targetResource), true);
         return 1;
     }
 
     private static int executeShowAll(CommandSourceStack source, String factionId) {
-        if (factionId == null) return 0;
+        if (factionId == null) {
+            return 0;
+        }
 
-        Faction faction = FactionManager.getInstance().getActiveFactions().get(factionId.trim());
-        if (faction == null) {
+        // Fetch the pre-formatted summary text directly via our encapsulation layer
+        String comprehensiveSummary = FactionManager.getFactionSummaryString(factionId);
+
+        if (comprehensiveSummary == null) {
             source.sendFailure(Component.literal("Specified Faction ID could not be matched against active arrays."));
             return 0;
         }
 
-        StringBuilder originsBuilder = new StringBuilder();
-        for (String rootId : faction.getValidOrigins()) {
-            originsBuilder.append("\n §7- ").append(rootId).append(" (§e").append(OriginManager.getCleanName(rootId)).append("§7)");
-        }
-
-        source.sendSuccess(() -> Component.literal("§6=== Faction Comprehensive Review: " + faction.getDisplayName() + " ===" +
-                "\n§7Internal Unique ID: §f" + faction.getId() +
-                "\n§7System LeaderUUID: §f" + faction.getLeaderUUID() +
-                "\n§bBalances Matrix:" +
-                "\n §7• Cogs: §f" + faction.getCogs() + "  §7• Food: §f" + faction.getFood() + "  §7• Mana: §f" + faction.getMana() +
-                "\n§dRegistered Allowed Origins:" + originsBuilder.toString() +
-                "\n§7Active Live Members Loaded: §b" + faction.getMembers().size()), true);
+        source.sendSuccess(() -> Component.literal(comprehensiveSummary), true);
         return 1;
     }
 
     private static int executeListAll(CommandSourceStack source) {
-        Map<String, Faction> activeMap = FactionManager.getInstance().getActiveFactions();
-        if (activeMap.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("There are currently zero active live factions registered in environment mappings."), true);
-            return 1;
-        }
+        // Query the complete server listings index without handling any Faction collections
+        String globalListOutput = FactionManager.buildGlobalFactionListString();
 
-        StringBuilder listBuilder = new StringBuilder("§6=== Active Registered Server Factions (" + activeMap.size() + ") ===");
-        for (Faction faction : activeMap.values()) {
-            listBuilder.append("\n §7• §f").append(faction.getId()).append(" §7-> Title: §a").append(faction.getDisplayName()).append(" §7(Members: §b").append(faction.getMembers().size()).append("§7)");
-        }
-
-        source.sendSuccess(() -> Component.literal(listBuilder.toString()), true);
+        source.sendSuccess(() -> Component.literal(globalListOutput), true);
         return 1;
-    }
-
-    private static int calculateTargetValue(int current, int modifier, MathOp op) {
-        switch (op) {
-            case ADD: return current + modifier;
-            case SUB: return current - modifier;
-            case SET: return modifier;
-            default: return current;
-        }
     }
 
     private enum MathOp {

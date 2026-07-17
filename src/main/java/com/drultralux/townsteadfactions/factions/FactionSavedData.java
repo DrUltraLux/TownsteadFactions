@@ -3,9 +3,8 @@ package com.drultralux.townsteadfactions.factions;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.Tag;
+import net.minecraft.nbt.NbtUtils;
 import net.minecraft.world.level.saveddata.SavedData;
-import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -14,71 +13,51 @@ import java.util.UUID;
  * Flushes active currency balances and membership registers directly down to world files on save checkpoints.
  */
 public class FactionSavedData extends SavedData {
+    public CompoundTag rawLoadedTag = new CompoundTag();
 
-    public static FactionSavedData load(CompoundTag nbt, HolderLookup.Provider registries) {
+    /**
+     * Natively loads the raw NBT data from disk on world boot.
+     * Acts as a pure, stateless reader file wrapper.
+     */
+    public static FactionSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         FactionSavedData data = new FactionSavedData();
-        if (nbt.contains("FactionsDataMatrix", Tag.TAG_LIST)) {
-            ListTag factionsList = nbt.getList("FactionsDataMatrix", Tag.TAG_COMPOUND);
-
-            for (int i = 0; i < factionsList.size(); i++) {
-                CompoundTag factionTag = factionsList.getCompound(i);
-                String factionId = factionTag.getString("factionID");
-
-                Faction faction = FactionManager.getInstance().getActiveFactions().get(factionId);
-                if (faction != null) {
-                    faction.setCogs(factionTag.getInt("Cogs"));
-                    faction.setFood(factionTag.getInt("Food"));
-                    faction.setMana(factionTag.getInt("Mana"));
-
-                    if (factionTag.hasUUID("LeaderUUID")) {
-                        faction.setLeaderUUID(factionTag.getUUID("LeaderUUID"));
-                    }
-
-                    if (factionTag.contains("MembersRoster", Tag.TAG_LIST)) {
-                        ListTag membersList = factionTag.getList("MembersRoster", Tag.TAG_COMPOUND);
-                        for (int j = 0; j < membersList.size(); j++) {
-                            CompoundTag memberTag = membersList.getCompound(j);
-                            if (memberTag.hasUUID("MemberUUID")) {
-                                faction.addMember(memberTag.getUUID("MemberUUID"));
-                            }
-                        }
-                    }
-                }
-            }
+        if (tag != null) {
+            // Cache the raw tag safely inside the instance container so our server event layer can read it
+            data.rawLoadedTag = tag;
         }
         return data;
     }
 
     @Override
-    public CompoundTag save(CompoundTag nbt, HolderLookup.Provider registries) {
-        ListTag factionsList = new ListTag();
-        Map<String, Faction> activeMap = FactionManager.getInstance().getActiveFactions();
+    public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
+        // Read directly from the live runtime memory registry immediately before disk write
+        Map<String, Faction> liveFactions = FactionManager.getInstance().getActiveFactions();
 
-        for (Map.Entry<String, Faction> entry : activeMap.entrySet()) {
-            CompoundTag factionTag = new CompoundTag();
-            Faction faction = entry.getValue();
+        CompoundTag factionsTag = new CompoundTag();
+        liveFactions.forEach((id, faction) -> {
+            if (id != null && faction != null) {
+                CompoundTag factionNbt = new CompoundTag();
+                factionNbt.putString("id", faction.getId());
+                factionNbt.putString("displayName", faction.getDisplayName());
+                if (faction.getLeaderUUID() != null) {
+                    factionNbt.putUUID("leaderUUID", faction.getLeaderUUID());
+                }
+                factionNbt.putInt("cogs", faction.getCogs());
+                factionNbt.putInt("food", faction.getFood());
+                factionNbt.putInt("mana", faction.getMana());
 
-            factionTag.putString("factionID", faction.getId());
-            factionTag.putInt("Cogs", faction.getCogs());
-            factionTag.putInt("Food", faction.getFood());
-            factionTag.putInt("Mana", faction.getMana());
+                ListTag membersList = new ListTag();
+                for (UUID memberUuid : faction.getMembers()) {
+                    if (memberUuid != null) {
+                        membersList.add(NbtUtils.createUUID(memberUuid));
+                    }
+                }
+                factionNbt.put("members", membersList);
 
-            if (faction.getLeaderUUID() != null) {
-                factionTag.putUUID("LeaderUUID", faction.getLeaderUUID());
+                factionsTag.put(id, factionNbt);
             }
-
-            ListTag membersList = new ListTag();
-            for (UUID memberUUID : faction.getMembers()) {
-                CompoundTag memberTag = new CompoundTag();
-                memberTag.putUUID("MemberUUID", memberUUID);
-                membersList.add(memberTag);
-            }
-            factionTag.put("MembersRoster", membersList);
-
-            factionsList.add(factionTag);
-        }
-
-        nbt.put("FactionsDataMatrix", factionsList);
-        return nbt;
+        });
+        tag.put("factions", factionsTag);
+        return tag;
     }
 }

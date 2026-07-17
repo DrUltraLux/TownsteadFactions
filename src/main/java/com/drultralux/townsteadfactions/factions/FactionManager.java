@@ -3,6 +3,9 @@ package com.drultralux.townsteadfactions.factions;
 import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.roots.OriginManager;
+import net.minecraft.nbt.CompoundTag;
+import net.minecraft.nbt.ListTag;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -24,66 +27,126 @@ public class FactionManager {
     }
 
     /**
-     * Loops through factions.json, filters out unmapped origins, and populates live Faction instances.
-     * Enforces the constraint that a faction must have at least one valid origin to be initialized.
+     * Initializes factions by loading mappings from factions.json.
+     * Validates origins, merges data with existing loaded factions to preserve state,
+     * and updates the active factions map.
      */
     public void initializeFactionsFromConfig() {
-        LogManager.info("Initializing server factions from configuration mappings...");
-
-        // 1. Fetch the raw configuration dictionary map directly from your dynamic JSON container
+        LogManager.info("Initializing server factions from configuration mappings directly...");
         Map<String, List<String>> configMap = ModConfig.FACTIONS.getFactionsMap();
-        Map<String, Faction> reconsiledFactions = new HashMap<>();
+        Map<String, Faction> freshFactions = new HashMap<>();
 
-        // 2. MAIN CREATION LOOP: Process each config category row dynamically
         for (Map.Entry<String, List<String>> entry : configMap.entrySet()) {
             String factionId = entry.getKey();
             List<String> configuredOrigins = entry.getValue();
+            if (factionId == null || factionId.trim().isEmpty() || configuredOrigins == null) continue;
 
-            if (factionId == null || factionId.trim().isEmpty() || configuredOrigins == null) {
-                continue;
-            }
-
-            // Clean up the casing structure to maintain uniform layout lookups
             String cleanFactionId = factionId.trim();
             List<String> validOrigins = new ArrayList<>();
-
-            // 🔍 CROSS-EXAMINE LAYER: Check configured items against Townstead's active registry
             for (String originId : configuredOrigins) {
-                if (originId != null) {
-                    String targetKey = originId.trim();
-                    if (OriginManager.isValidOrigin(targetKey)) {
-                        validOrigins.add(targetKey);
-                    } else {
-                        LogManager.warn("Config tracking verification warning: Origin '" + targetKey + "' was not found in Townstead registry cache.");
-                    }
+                if (originId != null && OriginManager.isValidOrigin(originId.trim())) {
+                    validOrigins.add(originId.trim());
                 }
             }
 
             if (!validOrigins.isEmpty()) {
-                // If the faction already exists from a previous server save file data block, preserve its state
-                Faction factionInstance;
-                if (this.activeFactions.containsKey(cleanFactionId)) {
-                    factionInstance = this.activeFactions.get(cleanFactionId);
-                    LogManager.debug("Re-initializing existing live faction instance: " + cleanFactionId);
-                } else {
-                    // Create a pristine new Faction tracking block using the default system UUID anchor
-                    LogManager.info("Creating fresh Faction instance from config layout target -> " + cleanFactionId);
-                    factionInstance = new Faction(cleanFactionId, cleanFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
-                }
-
-                // Synchronize the verified, clean origins array list straight to the Faction object structure
+                Faction factionInstance = new Faction(cleanFactionId, cleanFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
                 factionInstance.setValidOrigins(validOrigins);
-                reconsiledFactions.put(cleanFactionId, factionInstance);
-            } else {
-                LogManager.warn("Skipping initialization for faction '" + cleanFactionId + "': Possesses zero valid Townstead origins.");
+                freshFactions.put(cleanFactionId, factionInstance);
             }
         }
-
-        // 3. ADMIN REMOVAL LOOP: Clear out any active tracking frames dropped or renamed out of the JSON file
         this.activeFactions.clear();
-        this.activeFactions.putAll(reconsiledFactions);
+        this.activeFactions.putAll(freshFactions);
+    }
 
-        LogManager.info("Faction initialization complete. Total active structures verified and loaded: " + this.activeFactions.size());
+    /**
+     * Direct Persistence Restorer: Replaces running tracking maps directly with the data read from the world save files.
+     */
+    public void loadFactionPersistenceData(Map<String, Faction> savedFactions) {
+        if (savedFactions == null || savedFactions.isEmpty()) return;
+        this.activeFactions.clear();
+        this.activeFactions.putAll(savedFactions);
+    }
+
+    /**
+     * Parent Orchestrator: Ingests raw world file NBT tags and reconstructs the server-side active factions map.
+     * Natively executes the fallback configuration loop if the world save data is empty.
+     * Reconciles and synchronizes live storage assets with current configuration origin maps if data exists.
+     */
+    public void reconcileFactionsAndLoad(net.minecraft.nbt.CompoundTag rootTag) {
+        // 1. FRESH RUN FALLBACK: If no save data exists, initialize cleanly from config definitions
+        if (rootTag == null || !rootTag.contains("factions", 10)) { // 10 is CompoundTag
+            LogManager.info("No persistent world save data found. Executing fallback configuration loader.");
+            initializeFactionsFromConfig();
+            return;
+        }
+
+        // 2. LOAD SAVED RECURSION DATA: Reconstruct the runtime map exclusively from the world save file
+        LogManager.info("Persistent world records found. Restoring active faction data blocks from disk save...");
+
+        this.activeFactions.clear();
+        net.minecraft.nbt.CompoundTag factionsCompound = rootTag.getCompound("factions");
+
+        for (String factionId : factionsCompound.getAllKeys()) {
+            if (factionId == null) continue;
+            String cleanId = factionId.trim();
+            net.minecraft.nbt.CompoundTag factionTag = factionsCompound.getCompound(factionId);
+
+            // Instantiate the Faction object with its persistent historical metrics intact
+            Faction faction = new Faction(cleanId, factionTag.getString("displayName"), new java.util.UUID(0,0));
+            faction.setCogs(factionTag.getInt("cogs"));
+            faction.setFood(factionTag.getInt("food"));
+            faction.setMana(factionTag.getInt("mana"));
+
+            if (factionTag.hasUUID("leaderUUID")) {
+                faction.setLeaderUUID(factionTag.getUUID("leaderUUID"));
+            }
+
+            if (factionTag.contains("members", 9)) { // 9 is ListTag
+                net.minecraft.nbt.ListTag membersList = factionTag.getList("members", 11); // 11 is IntArrayTag for UUIDs
+                for (int j = 0; j < membersList.size(); j++) {
+                    faction.getMembers().add(net.minecraft.nbt.NbtUtils.loadUUID(membersList.get(j)));
+                }
+            }
+
+            this.activeFactions.put(cleanId, faction);
+            LogManager.debug("Loaded baseline attributes from file layer for faction profile: " + cleanId);
+        }
+
+        // 3. RECONCILE WITH LIVE CONFIGS: Overlay current origin mappings without erasing live properties
+        LogManager.info("Reconciling restored database records against active config maps...");
+        Map<String, List<String>> configMap = ModConfig.FACTIONS.getFactionsMap();
+
+        if (configMap != null && !configMap.isEmpty()) {
+            for (Map.Entry<String, List<String>> entry : configMap.entrySet()) {
+                String configFactionId = entry.getKey().trim();
+                List<String> configuredOrigins = entry.getValue();
+
+                if (configFactionId.isEmpty() || configuredOrigins == null) continue;
+
+                // Process and filter valid origins from the updated JSON mappings
+                List<String> validOrigins = new java.util.ArrayList<>();
+                for (String originId : configuredOrigins) {
+                    if (originId != null && OriginManager.isValidOrigin(originId.trim())) {
+                        validOrigins.add(originId.trim());
+                    }
+                }
+
+                Faction activeFaction = this.activeFactions.get(configFactionId);
+                if (activeFaction != null) {
+                    // Update the valid origins array—this catches instances where roots moved around inside existing IDs!
+                    activeFaction.setValidOrigins(validOrigins);
+                    LogManager.debug("Successfully reconciled updated config origins mapping for faction: " + configFactionId);
+                } else {
+                    // Fallback: If a faction exists in config but was completely missing from the save file, initialize it fresh
+                    Faction newFaction = new Faction(configFactionId, configFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
+                    newFaction.setValidOrigins(validOrigins);
+                    this.activeFactions.put(configFactionId, newFaction);
+                    LogManager.info("Config Sync: Generated a new tracking block for config entry missing from file: " + configFactionId);
+                }
+            }
+        }
+        LogManager.info("Data persistence restoration and hybrid reconciliation complete. Total active factions: " + this.activeFactions.size());
     }
 
     /**
@@ -144,7 +207,162 @@ public class FactionManager {
         return (faction != null && faction.getMembers() != null) ? faction.getMembers().size() : 0;
     }
 
+    // Holds the transient reference to the active world save data session
+    private static FactionSavedData activeStorageInstance = null;
+
+    /**
+     * Binds the current world level data storage instance to the live runtime memory layout.
+     */
+    public static void setStorageInstance(FactionSavedData storage) {
+        activeStorageInstance = storage;
+    }
+
+    /**
+     * Modifies a specific asset type for a faction by its string ID without exposing the Faction instance.
+     * @param assetType Can be "cogs", "food", or "mana"
+     * @param amount The integer amount to add (positive) or remove (negative)
+     */
+    public static boolean modifyFactionAsset(String factionId, String assetType, int amount) {
+        if (factionId == null || assetType == null) return false;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return false;
+
+        switch (assetType.toLowerCase()) {
+            case "cogs" -> faction.setCogs(Math.max(0, faction.getCogs() + amount));
+            case "food" -> faction.setFood(Math.max(0, faction.getFood() + amount));
+            case "mana" -> faction.setMana(Math.max(0, faction.getMana() + amount));
+            default -> { return false; }
+        }
+
+        // Flag the storage layer as dirty natively if our static tracker is bound
+        if (activeStorageInstance != null) {
+            activeStorageInstance.setDirty();
+        }
+        return true;
+    }
+
     public Map<String, Faction> getActiveFactions() {
         return this.activeFactions;
+    }
+
+    /**
+     * Safely reads a player's assigned faction display name using their raw account UUID identifier.
+     * Prevents external code classes from querying or leaking the underlying Faction instance structure.
+     */
+    public static String getPlayerFactionDisplayName(java.util.UUID playerUUID) {
+        if (playerUUID == null) {
+            return "None Assigned";
+        }
+        String factionId = getPlayerFactionId(playerUUID);
+        if (factionId == null) {
+            return "None Assigned";
+        }
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        return (faction != null) ? faction.getDisplayName() : "None Assigned";
+    }
+
+    /**
+     * Executes resource arithmetic operations securely inside the manager context.
+     * Prevents negative balances and automatically flags the active storage session as dirty.
+     * @return 1 on successful execution, 0 on total operational failure.
+     */
+    public static int executeEncapsulatedAssetMath(String factionId, String rawResource, int amount, String operation) {
+        if (factionId == null || rawResource == null || operation == null) {
+            return 0;
+        }
+
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) {
+            return 0;
+        }
+
+        String targetResource = rawResource.toLowerCase().trim();
+        String op = operation.toUpperCase().trim();
+
+        switch (targetResource) {
+            case "cogs", "cog" -> {
+                int current = faction.getCogs();
+                int next = op.equals("ADD") ? current + amount : op.equals("SUB") ? current - amount : amount;
+                faction.setCogs(Math.max(0, next));
+            }
+            case "food" -> {
+                int current = faction.getFood();
+                int next = op.equals("ADD") ? current + amount : op.equals("SUB") ? current - amount : amount;
+                faction.setFood(Math.max(0, next));
+            }
+            case "mana" -> {
+                int current = faction.getMana();
+                int next = op.equals("ADD") ? current + amount : op.equals("SUB") ? current - amount : amount;
+                faction.setMana(Math.max(0, next));
+            }
+            default -> {
+                return 0;
+            }
+        }
+
+        // Automatically dispatch the disk-flushing flag if our tracker is initialized
+        if (activeStorageInstance != null) {
+            activeStorageInstance.setDirty();
+        }
+        return 1;
+    }
+
+    /**
+     * Constructs a comprehensive review text matrix for a specified faction identifier.
+     * Extracts values internally and formats them with Minecraft color symbols cleanly.
+     * @return The complete compiled display string, or null if the faction cannot be matched.
+     */
+    public static String getFactionSummaryString(String factionId) {
+        if (factionId == null) {
+            return null;
+        }
+
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) {
+            return null;
+        }
+
+        StringBuilder originsBuilder = new StringBuilder();
+        if (faction.getValidOrigins() != null) {
+            for (String rootId : faction.getValidOrigins()) {
+                originsBuilder.append("\n §7- ").append(rootId)
+                        .append(" (§e").append(com.drultralux.townsteadfactions.roots.OriginManager.getCleanName(rootId))
+                        .append("§7)");
+            }
+        }
+
+        int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;
+        String leaderStr = (faction.getLeaderUUID() != null) ? faction.getLeaderUUID().toString() : "None Assigned";
+
+        return "§6=== Faction Comprehensive Review: " + faction.getDisplayName() + " ===" +
+                "\n §7Internal Unique ID: §f" + faction.getId() +
+                "\n §7System LeaderUUID: §f" + leaderStr +
+                "\n §bBalances Matrix:" +
+                "\n §7• Cogs: §f" + faction.getCogs() + " §7• Food: §f" + faction.getFood() + " §7• Mana: §f" + faction.getMana() +
+                "\n §7• Power / Members Count: §f" + memberCount +
+                "\n §dRegistered Allowed Origins:" + originsBuilder.toString() +
+                "\n §7Active Live Members Loaded: §b" + memberCount;
+    }
+
+    /**
+     * Iterates through the entire active tracking registry to assemble a structured
+     * global listing index of all server factions currently loaded in system memory.
+     */
+    public static String buildGlobalFactionListString() {
+        java.util.Map<String, Faction> activeMap = getInstance().getActiveFactions();
+        if (activeMap == null || activeMap.isEmpty()) {
+            return "There are currently zero active live factions registered in environment mappings.";
+        }
+
+        java.lang.StringBuilder listBuilder = new java.lang.StringBuilder("§6=== Active Registered Server Factions (" + activeMap.size() + ") ===");
+        for (Faction faction : activeMap.values()) {
+            if (faction != null) {
+                int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;
+                listBuilder.append("\n §7• §f").append(faction.getId())
+                        .append(" §7-> Title: §a").append(faction.getDisplayName())
+                        .append(" §7(Members: §b").append(memberCount).append("§7)");
+            }
+        }
+        return listBuilder.toString();
     }
 }

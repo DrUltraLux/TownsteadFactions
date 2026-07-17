@@ -8,9 +8,12 @@ import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.factions.FactionSavedData;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.roots.OriginManager;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
@@ -38,28 +41,36 @@ public class FactionServerEvents {
 
     /**
      * Triggered automatically upon server environment bootstrap routines.
-     * Initializes the Townstead origins caches and loads binary database files from the world save.
+     * Guaranteed to process exactly once on server startup, regardless of player level locations.
      */
     public static void onServerStarting(ServerStartingEvent event) {
-        LogManager.info("World dimensions loaded. Running persistence worker pipeline...");
+        LogManager.info("Server environment active. Running unified data persistence pipeline...");
         try {
             OriginManager.initializeFromTownstead();
 
-            ServerLevel overworld = event.getServer().getLevel(Level.OVERWORLD);
-            if (overworld != null) {
-                overworld.getDataStorage().computeIfAbsent(
-                        new net.minecraft.world.level.saveddata.SavedData.Factory<>(
-                                FactionSavedData::new,
-                                FactionSavedData::load,
-                                net.minecraft.util.datafix.DataFixTypes.SAVED_DATA_COMMAND_STORAGE
-                        ),
-                        "townsteadfactions_data"
-                );
+            var storageManager = event.getServer().overworld().getDataStorage();
+
+            FactionSavedData savedData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            FactionSavedData::new,
+                            FactionSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_data"
+            );
+
+            FactionManager.setStorageInstance(savedData);
+
+            if (savedData.rawLoadedTag != null && savedData.rawLoadedTag.contains("factions", 10)) {
+                LogManager.info("Persistent world records found. Initiating secure database recovery merge...");
+                FactionManager.getInstance().reconcileFactionsAndLoad(savedData.rawLoadedTag);
+            } else {
+                LogManager.info("No persistent history matrix found on disk. Initiating fallback configuration loader.");
+                FactionManager.getInstance().reconcileFactionsAndLoad(null);
             }
 
-            FactionManager.getInstance().initializeFactionsFromConfig();
         } catch (Exception e) {
-            LogManager.error("Critical failure during server startup data synchronization passes!", e);
+            LogManager.error("Critical failure encountered during server startup data synchronization passes!", e);
         }
     }
 
