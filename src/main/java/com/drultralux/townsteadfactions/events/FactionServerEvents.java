@@ -17,6 +17,9 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
+import net.minecraft.server.level.ServerLevel;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import java.util.List;
 
 /**
  * Registers and handles all server-side lifecycle events for Townstead
@@ -24,6 +27,15 @@ import net.neoforged.neoforge.event.server.ServerStartingEvent;
  * login syncing.
  */
 public class FactionServerEvents {
+
+    /**
+     * The index, within the current online player list, of the player who
+     * holds the origin-check token this tick. Advances by one each server
+     * tick, wrapping around — a full pass over all online players takes
+     * {@code onlinePlayerCount} ticks, regardless of how many players are
+     * online, since only one player is ever checked per tick.
+     */
+    private static int originCheckTokenIndex = 0;
 
     /**
      * Registers all of this class's event listeners onto the given event
@@ -36,7 +48,46 @@ public class FactionServerEvents {
         gameBus.addListener(FactionServerEvents::onServerStarting);
         gameBus.addListener(FactionServerEvents::onRegisterCommands);
         gameBus.addListener(FactionServerEvents::onPlayerLoggedIn);
+        gameBus.addListener(FactionServerEvents::onServerTick);
+        gameBus.addListener(FactionServerEvents::onPlayerLoggedOut);
         LogManager.info("Successfully centralized and registered all faction gameplay lifecycle listeners.");
+    }
+
+    /**
+     * Passes the origin-check token to the next online player each server
+     * tick, checking only that one player for an origin change. This keeps
+     * per-tick cost constant regardless of player count, at the cost of a
+     * full pass over all online players taking as many ticks as there are
+     * players online.
+     *
+     * @param event the server tick event
+     */
+    public static void onServerTick(ServerTickEvent.Post event) {
+        List<ServerPlayer> onlinePlayers = event.getServer().getPlayerList().getPlayers();
+        if (onlinePlayers.isEmpty()) return;
+
+        if (originCheckTokenIndex >= onlinePlayers.size()) {
+            originCheckTokenIndex = 0;
+        }
+
+        ServerPlayer tokenHolder = onlinePlayers.get(originCheckTokenIndex);
+        originCheckTokenIndex = (originCheckTokenIndex + 1) % onlinePlayers.size();
+
+        if (OriginManager.recheckPlayerOrigin(tokenHolder)) {
+            FactionPacketManager.sendFactionDataToClient(tokenHolder);
+        }
+    }
+
+    /**
+     * Clears a logged-out player's cached root ID, so the origin-change
+     * cache doesn't grow unbounded over a long-running server's lifetime.
+     *
+     * @param event the player logout event
+     */
+    public static void onPlayerLoggedOut(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (event.getEntity() instanceof ServerPlayer player) {
+            OriginManager.clearCachedRoot(player.getUUID());
+        }
     }
 
     /**

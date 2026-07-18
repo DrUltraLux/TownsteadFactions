@@ -26,6 +26,13 @@ public class OriginManager {
     private static final Map<String, String> originsCache = new HashMap<>();
 
     /**
+     * The most recently observed root ID for each online player this
+     * session, used to detect when a player changes their origin via the
+     * editor. Cleared per-player on logout.
+     */
+    private static final Map<UUID, String> lastKnownRootIds = new HashMap<>();
+
+    /**
      * Rebuilds {@link #originsCache} from Townstead's current
      * {@link RootRegistry}. Safe to call again to refresh the cache.
      */
@@ -90,39 +97,94 @@ public class OriginManager {
 
     /**
      * Resolves a logging-in player's origin and assigns them to the
-     * faction configured to accept that origin, if one is found.
+     * faction configured to accept that origin, if one is found. Also
+     * seeds this player's cached root ID so later origin-change checks
+     * have a baseline to compare against.
      *
      * @param player the player who just logged in
      */
     public static void fetchInitialRootID(ServerPlayer player) {
         try {
-            UUID playerUUID = player.getUUID();
-
             String playerRootId = PlayerRoot.getRootId(player);
+            String cleanedRootId = (playerRootId != null) ? playerRootId.trim() : "";
+            lastKnownRootIds.put(player.getUUID(), cleanedRootId);
 
-            if (playerRootId == null || playerRootId.trim().isEmpty()) {
+            if (cleanedRootId.isEmpty()) {
                 LogManager.debug("Player " + player.getName().getString() + " does not possess an assigned rootId configuration.");
                 return;
             }
 
-            String cleanedRootId = playerRootId.trim();
-            String targetFactionKey = null;
-
-            // Find which faction's configured origin list contains this player's root ID
-            for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
-                List<String> allowedOrigins = entry.getValue();
-                if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
-                    targetFactionKey = entry.getKey();
-                    break;
-                }
-            }
-
-            if (targetFactionKey != null) {
-                LogManager.info("Login Match: Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
-                FactionManager.getInstance().assignPlayerToFaction(playerUUID, targetFactionKey);
-            }
+            assignFactionForRoot(player, cleanedRootId);
         } catch (Exception e) {
             LogManager.error("Failed to safely process login faction validation metrics for player: " + player.getName().getString(), e);
+        }
+    }
+
+    /**
+     * Checks whether a player's current root ID differs from their last
+     * known value, and if so, reassigns their faction accordingly. Intended
+     * to be called periodically (see {@code FactionServerEvents}'s token-based
+     * tick check) rather than every tick for every player.
+     *
+     * @param player the player to check
+     * @return {@code true} if a change was detected and reassignment ran
+     */
+    public static boolean recheckPlayerOrigin(ServerPlayer player) {
+        try {
+            UUID playerUUID = player.getUUID();
+            String currentRootId = PlayerRoot.getRootId(player);
+            String cleaned = (currentRootId != null) ? currentRootId.trim() : "";
+            String previous = lastKnownRootIds.put(playerUUID, cleaned);
+
+            if (cleaned.equals(previous)) {
+                return false;
+            }
+
+            if (cleaned.isEmpty()) {
+                LogManager.debug("Player " + player.getName().getString() + " no longer has an assigned rootId.");
+                return false;
+            }
+
+            LogManager.info("Detected origin change for player " + player.getName().getString() + " (now: " + getCleanName(cleaned) + ")");
+            assignFactionForRoot(player, cleaned);
+            return true;
+        } catch (Exception e) {
+            LogManager.error("Failed to recheck origin for player: " + player.getName().getString(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Removes a player's cached root ID, called on logout so the cache
+     * doesn't grow unbounded over a long-running server's lifetime.
+     *
+     * @param playerUUID the UUID of the player who logged out
+     */
+    public static void clearCachedRoot(UUID playerUUID) {
+        lastKnownRootIds.remove(playerUUID);
+    }
+
+    /**
+     * Finds and assigns the faction configured to accept the given root ID,
+     * if one exists.
+     *
+     * @param player the player to assign
+     * @param cleanedRootId the player's current, trimmed root ID
+     */
+    private static void assignFactionForRoot(ServerPlayer player, String cleanedRootId) {
+        String targetFactionKey = null;
+
+        for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
+            List<String> allowedOrigins = entry.getValue();
+            if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
+                targetFactionKey = entry.getKey();
+                break;
+            }
+        }
+
+        if (targetFactionKey != null) {
+            LogManager.info("Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
+            FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
         }
     }
 }
