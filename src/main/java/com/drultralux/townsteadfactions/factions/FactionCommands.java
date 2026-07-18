@@ -1,9 +1,9 @@
 package com.drultralux.townsteadfactions.factions;
 
 import com.aetherianartificer.townstead.root.PlayerRoot;
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
-import com.drultralux.townsteadfactions.roots.OriginManager;
+import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -11,26 +11,26 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
-import java.util.Map;
 import java.util.UUID;
 
 /**
- * Centrally coordinates registration and routing for player and administrative command trees.
- * Enforces strict permission splits and unified resource math operations natively.
+ * Registers and handles the {@code /factions} and {@code /f} command
+ * trees: player-facing profile commands, and OP-only administrative
+ * resource and listing commands.
  */
 public class FactionCommands {
 
     /**
-     * Registers the total /factions and short-form /f branch commands onto the gameplay bus dispatcher.
+     * Registers both the {@code /factions} and {@code /f} command trees
+     * onto the given dispatcher.
+     *
+     * @param dispatcher the command dispatcher to register onto
      */
     public static void register(CommandDispatcher<CommandSourceStack> dispatcher) {
-        // Build the root nodes for both long-form and short-form variants concurrently
         var factionsRoot = Commands.literal("factions");
         var shortRoot = Commands.literal("f");
 
-        // ==========================================
-        //         PLAYER BRANCH (ALL LEVELS)
-        // ==========================================
+        // --- PLAYER BRANCH (all permission levels) ---
 
         var displayNode = Commands.literal("display")
                 .executes(context -> executeDisplay(context.getSource()));
@@ -41,11 +41,9 @@ public class FactionCommands {
         factionsRoot.then(displayNode).then(updateNode);
         shortRoot.then(displayNode).then(updateNode);
 
-        // ==========================================
-        //         ADMIN BRANCH (OP PERM LEVEL 2)
-        // ==========================================
+        // --- ADMIN BRANCH (OP permission level 2) ---
 
-        // 1. /factions add <resource> <faction> <amount>
+        // /factions add <resource> <faction> <amount>
         var addNode = Commands.literal("add")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("resource", StringArgumentType.string())
@@ -62,7 +60,7 @@ public class FactionCommands {
                         )
                 );
 
-        // 2. /factions sub <resource> <faction> <amount>
+        // /factions sub <resource> <faction> <amount>
         var subNode = Commands.literal("sub")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("resource", StringArgumentType.string())
@@ -79,7 +77,7 @@ public class FactionCommands {
                         )
                 );
 
-        // 3. /factions set <resource> <faction> <amount>
+        // /factions set <resource> <faction> <amount>
         var setNode = Commands.literal("set")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("resource", StringArgumentType.string())
@@ -96,39 +94,41 @@ public class FactionCommands {
                         )
                 );
 
-        // 4. /factions showall <faction>
+        // /factions showall <faction>
         var showAllNode = Commands.literal("showall")
                 .requires(source -> source.hasPermission(2))
                 .then(Commands.argument("faction", StringArgumentType.string())
                         .executes(context -> executeShowAll(context.getSource(), StringArgumentType.getString(context, "faction")))
                 );
 
-        // 5. /factions listall
+        // /factions listall
         var listAllNode = Commands.literal("listall")
                 .requires(source -> source.hasPermission(2))
                 .executes(context -> executeListAll(context.getSource()));
 
-        // Wire the admin commands straight onto the root literal extensions cleanly
         factionsRoot.then(addNode).then(subNode).then(setNode).then(showAllNode).then(listAllNode);
         shortRoot.then(addNode).then(subNode).then(setNode).then(showAllNode).then(listAllNode);
 
-        // Register both base endpoints to the master server dispatcher bus context
         dispatcher.register(factionsRoot);
         dispatcher.register(shortRoot);
     }
 
-    // ==========================================
-    //         EXECUTION HANDLER METHODS
-    // ==========================================
+    // --- EXECUTION HANDLER METHODS ---
 
+    /**
+     * Handles {@code /factions display}: shows the executing player their
+     * origin and assigned faction.
+     *
+     * @param source the command source
+     * @return {@code 1} on success, {@code 0} if not run by a player
+     */
     private static int executeDisplay(CommandSourceStack source) {
         try {
             ServerPlayer player = source.getPlayerOrException();
-            java.util.UUID playerUUID = player.getUUID();
+            UUID playerUUID = player.getUUID();
             String playerRootId = PlayerRoot.getRootId(player);
             String cleanOriginName = OriginManager.getCleanName(playerRootId);
 
-            // Access data strictly via encapsulation—no local Faction variables or map loops!
             String factionDisplay = FactionManager.getPlayerFactionDisplayName(playerUUID);
 
             source.sendSuccess(() -> Component.literal("§b--- Your Profile Parameters ---" +
@@ -142,15 +142,20 @@ public class FactionCommands {
         }
     }
 
+    /**
+     * Handles {@code /factions update}: re-resolves the executing player's
+     * origin/faction assignment and re-syncs their client cache.
+     *
+     * @param source the command source
+     * @return {@code 1} on success, {@code 0} if not run by a player
+     */
     private static int executeUpdate(CommandSourceStack source) {
         try {
             ServerPlayer player = source.getPlayerOrException();
             LogManager.info("Forcing runtime origin profile reconciliation sync for player: " + player.getName().getString());
 
             OriginManager.fetchInitialRootID(player);
-
-            // Forces an instantaneous network transmission of the client's cache assets
-            com.drultralux.townsteadfactions.network.FactionPacketManager.sendFactionDataToClient(player);
+            FactionPacketManager.sendFactionDataToClient(player);
 
             source.sendSuccess(() -> Component.literal("§aSuccessfully updated and re-synchronized faction alignments against config states."), false);
             return 1;
@@ -160,12 +165,22 @@ public class FactionCommands {
         }
     }
 
+    /**
+     * Handles {@code /factions add|sub|set}: applies a resource math
+     * operation to a faction and syncs the executing player if applicable.
+     *
+     * @param source the command source
+     * @param rawResource the resource name to modify (e.g. {@code "cogs"})
+     * @param factionId the target faction's ID
+     * @param amount the amount to apply
+     * @param operation which math operation to perform
+     * @return {@code 1} on success, {@code 0} on validation failure
+     */
     private static int executeResourceMath(CommandSourceStack source, String rawResource, String factionId, int amount, MathOp operation) {
         if (factionId == null || rawResource == null || operation == null) {
             return 0;
         }
 
-        // Delegate calculations and state-saving to the manager layer
         int resultStatus = FactionManager.executeEncapsulatedAssetMath(
                 factionId,
                 rawResource,
@@ -178,21 +193,26 @@ public class FactionCommands {
             return 0;
         }
 
-        if (source.getEntity() instanceof ServerPlayer player) {
-          FactionPacketManager.sendFactionDataToClient(player);
-        }
+        FactionPacketManager.broadcastFactionDelta(factionId.trim(), source.getServer());
 
         String targetResource = rawResource.toLowerCase().trim();
         source.sendSuccess(() -> Component.literal("§a[Admin] Successfully processed " + operation.name() + " operation on faction §f" + factionId.trim() + " §a" + targetResource), true);
         return 1;
     }
 
+    /**
+     * Handles {@code /factions showall <faction>}: shows a full resource
+     * summary for the given faction.
+     *
+     * @param source the command source
+     * @param factionId the faction's ID to summarize
+     * @return {@code 1} on success, {@code 0} if the faction isn't found
+     */
     private static int executeShowAll(CommandSourceStack source, String factionId) {
         if (factionId == null) {
             return 0;
         }
 
-        // Fetch the pre-formatted summary text directly via our encapsulation layer
         String comprehensiveSummary = FactionManager.getFactionSummaryString(factionId);
 
         if (comprehensiveSummary == null) {
@@ -204,15 +224,27 @@ public class FactionCommands {
         return 1;
     }
 
+    /**
+     * Handles {@code /factions listall}: lists a summary of every active
+     * faction on the server.
+     *
+     * @param source the command source
+     * @return always {@code 1}
+     */
     private static int executeListAll(CommandSourceStack source) {
-        // Query the complete server listings index without handling any Faction collections
         String globalListOutput = FactionManager.buildGlobalFactionListString();
 
         source.sendSuccess(() -> Component.literal(globalListOutput), true);
         return 1;
     }
 
+    /** The resource math operations supported by the admin commands. */
     private enum MathOp {
-        ADD, SUB, SET
+        /** Adds the given amount to the current value. */
+        ADD,
+        /** Subtracts the given amount from the current value. */
+        SUB,
+        /** Sets the value directly to the given amount. */
+        SET
     }
 }

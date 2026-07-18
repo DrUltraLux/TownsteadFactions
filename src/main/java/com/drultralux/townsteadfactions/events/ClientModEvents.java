@@ -1,9 +1,9 @@
-package com.drultralux.townsteadfactions.client;
+package com.drultralux.townsteadfactions.events;
 
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.client.KeyMappings;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.client.screen.FactionPalette;
 import com.drultralux.townsteadfactions.client.screen.FactionScreen;
-import com.drultralux.townsteadfactions.client.KeyMappings;
 import net.minecraft.client.Minecraft;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.event.lifecycle.FMLClientSetupEvent;
@@ -11,20 +11,22 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
 import net.neoforged.neoforge.client.event.RegisterKeyMappingsEvent;
 
 /**
- * Centrally coordinates system registration hooks and interface update ticks on the client side.
- * Restricts engine logic execution pathways strictly to the local physical game distribution instance.
+ * Registers client-only event handlers for Townstead Factions: key
+ * mapping registration, client setup, and per-tick hotkey handling.
  */
 public class ClientModEvents {
 
     /**
-     * Dedicated lifecycle listener class mapped to register mod-bus events.
+     * Handles mod-bus events fired during client startup, such as key
+     * binding and palette registration.
      */
     public static class ClientModBusEvents {
 
         /**
-         * Injects custom dashboard key configurations directly into the standard options registry tree.
+         * Registers the faction dashboard key binding so it appears in the
+         * controls menu and can be triggered in-game.
          *
-         * @param event the structural registration context supplied by the mod loading framework
+         * @param event the key mapping registration event
          */
         @SubscribeEvent
         public static void onRegisterKeyMappings(RegisterKeyMappingsEvent event) {
@@ -32,6 +34,11 @@ public class ClientModEvents {
             event.register(KeyMappings.OPEN_FACTION_DASHBOARD);
         }
 
+        /**
+         * Initializes the faction UI color palette during client setup.
+         *
+         * @param event the client setup event
+         */
         @SubscribeEvent
         public static void onClientSetup(FMLClientSetupEvent event) {
             FactionPalette.init();
@@ -39,14 +46,17 @@ public class ClientModEvents {
     }
 
     /**
-     * Dedicated tick listener framework class mapping game loops to catch interface input triggers.
+     * Handles per-tick game-bus events on the client, such as detecting the
+     * dashboard hotkey.
      */
     public static class ClientGameBusEvents {
 
         /**
-         * Monitored execution loop tracking live controller inputs to initialize screen drawing layers.
+         * Checks each client tick whether the faction dashboard hotkey was
+         * pressed while no other screen is open, and opens the faction
+         * screen if so.
          *
-         * @param event the active runtime client frame tracking tick reference context
+         * @param event the client tick event
          */
         @SubscribeEvent
         public static void onClientTick(ClientTickEvent.Post event) {

@@ -9,26 +9,30 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Encapsulates an isolated, dynamic tab screen workspace page panel layout.
- * Houses collections of independent draggable sub-windows to automate compartmentalized rendering loops.
+ * Represents a single tab in the faction dashboard, holding the set of
+ * draggable widgets assigned to that tab.
  */
 public class FactionTabPanel {
+
+    /** The display name shown on this tab's header button. */
     private final Component tabTitle;
+
+    /** The widgets currently assigned to this tab. */
     private final List<DraggableWidget> components = new ArrayList<>();
 
     /**
-     * Instantiates an active viewport layout sheet designated as a standalone UI tab page.
+     * Creates a new, empty tab panel.
      *
-     * @param tabTitle the translated name label displaying over the top selection button
+     * @param tabTitle the display name shown on this tab's header button
      */
     public FactionTabPanel(Component tabTitle) {
         this.tabTitle = tabTitle;
     }
 
     /**
-     * Pushes a freshly allocated child widget frame down into the local tracking arrays.
+     * Adds a widget to this tab, if it isn't already present.
      *
-     * @param widget the target DraggableWidget instance component frame node to insert
+     * @param widget the widget to add
      */
     public void addWidget(DraggableWidget widget) {
         if (widget != null && !this.components.contains(widget)) {
@@ -37,23 +41,25 @@ public class FactionTabPanel {
     }
 
     /**
-     * Safely drops an active widget instance out of the local sheet matrix during drag movements.
+     * Removes a widget from this tab.
      *
-     * @param widget the target DraggableWidget component instance to disconnect and pull
+     * @param widget the widget to remove
      */
     public void removeWidget(DraggableWidget widget) {
         this.components.remove(widget);
     }
 
     /**
-     * Iterates down the structural tracking stacks to trigger background frame ticks.
-     * Passes the functional segment drawing tracker directly through the processing chain loops.
+     * Renders every widget assigned to this tab.
      *
-     * @param graphics the core baseline matrix graphics drawing buffer reference
-     * @param mouseX the horizontal coordinate vector tracking text elements
-     * @param mouseY the vertical coordinate vector tracking text elements
-     * @param partialTicks the intermediate physics frame factor index parameter
-     * @param barRenderer the centralized MariesLib utility handling segment line updates
+     * @param graphics the graphics context to draw with
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param partialTicks the partial tick time, for frame interpolation
+     * @param barRenderer a shared segment renderer for resource bars.
+     *                     TODO: this is currently unused — widgets aren't given
+     *                     access to it. Confirm whether it's meant to be wired
+     *                     into widget rendering, or removed if not needed.
      */
     public void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks, GuiValueRenderer barRenderer) {
         for (DraggableWidget widget : this.components) {
@@ -62,18 +68,19 @@ public class FactionTabPanel {
     }
 
     /**
-     * Fetches the translated text component label held by this layout tracking sheet.
+     * Returns this tab's display name.
      *
-     * @return the text title Component interface object pointer reference
+     * @return the tab title
      */
     public Component getTabTitle() {
         return this.tabTitle;
     }
 
     /**
-     * Exposes the raw underlying collection tracking data frames inside the panel view.
+     * Returns the live list of widgets assigned to this tab. Modifying the
+     * returned list modifies this panel directly.
      *
-     * @return the list container tracking all assigned DraggableWidget objects
+     * @return the widgets assigned to this tab
      */
     public List<DraggableWidget> getComponents() {
         return this.components;

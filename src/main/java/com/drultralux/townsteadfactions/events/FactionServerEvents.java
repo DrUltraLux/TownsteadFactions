@@ -1,18 +1,13 @@
 package com.drultralux.townsteadfactions.events;
 
-import com.drultralux.townsteadfactions.LogManager;
-import com.drultralux.townsteadfactions.client.FactionSyncPayload;
-import com.drultralux.townsteadfactions.factions.Faction;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.factions.FactionCommands;
 import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.factions.FactionSavedData;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
-import com.drultralux.townsteadfactions.roots.OriginManager;
-import net.minecraft.nbt.CompoundTag;
-import net.minecraft.server.level.ServerLevel;
+import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixTypes;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.level.saveddata.SavedData;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
@@ -20,16 +15,17 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 
 /**
- * Centrally coordinates and houses all game framework lifecycle listeners and event tracks.
- * Completely self-contained within the events package without relying on deprecated auto-subscribers.
+ * Registers and handles all server-side lifecycle events for Townstead
+ * Factions: server startup data loading, command registration, and player
+ * login syncing.
  */
 public class FactionServerEvents {
 
     /**
-     * Central registration hub invoked during mod initialization.
-     * Sequentially attaches all local event methods onto NeoForge's gameplay bus pipeline handle.
+     * Registers all of this class's event listeners onto the given event
+     * bus. Should be called once during mod initialization.
      *
-     * @param gameBus NeoForge's active game event bus reference (NeoForge.EVENT_BUS)
+     * @param gameBus the event bus to register listeners on (typically {@code NeoForge.EVENT_BUS})
      */
     public static void registerListeners(IEventBus gameBus) {
         if (gameBus == null) return;
@@ -40,8 +36,11 @@ public class FactionServerEvents {
     }
 
     /**
-     * Triggered automatically upon server environment bootstrap routines.
-     * Guaranteed to process exactly once on server startup, regardless of player level locations.
+     * Runs once when the server starts: initializes origin data, loads
+     * saved faction data from disk (or falls back to defaults if none
+     * exists), and hands it off to the {@link FactionManager}.
+     *
+     * @param event the server starting event
      */
     public static void onServerStarting(ServerStartingEvent event) {
         LogManager.info("Server environment active. Running unified data persistence pipeline...");
@@ -75,7 +74,10 @@ public class FactionServerEvents {
     }
 
     /**
-     * Catches the command registration event to append administrative and player slash nodes.
+     * Registers faction-related commands with the server's command
+     * dispatcher.
+     *
+     * @param event the command registration event
      */
     public static void onRegisterCommands(RegisterCommandsEvent event) {
         LogManager.info("Injecting player and administrative faction command routing nodes...");
@@ -83,8 +85,10 @@ public class FactionServerEvents {
     }
 
     /**
-     * Intercepts player login events to assign them their default faction profile
-     * and sync data down network lines immediately.
+     * Resolves a newly logged-in player's faction origin and sends them
+     * their current faction data.
+     *
+     * @param event the player login event
      */
     public static void onPlayerLoggedIn(PlayerEvent.PlayerLoggedInEvent event) {
         if (event.getEntity() instanceof ServerPlayer player) {
@@ -95,11 +99,13 @@ public class FactionServerEvents {
     }
 
     /**
-     * Force-syncs an individual player's cache with the server's real data state.
+     * Sends a player their current faction data, refreshing their
+     * client-side cache to match the server's state.
+     *
+     * @param player the player to sync, or {@code null} to do nothing
      */
     public static void syncPlayerFactionData(ServerPlayer player) {
         if (player != null) {
-            // Natively delegate the complete live database packet transmission downstream
             FactionPacketManager.sendFactionDataToClient(player);
         }
     }

@@ -1,35 +1,49 @@
 package com.drultralux.townsteadfactions.factions;
 
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
-import com.drultralux.townsteadfactions.roots.OriginManager;
+import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
 
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.HashSet;
+import java.util.Set;
 
 /**
- * Centrally manages the creation, initialization, and tracking of active Faction instances.
- * Enforces the config file as the single source of truth for structural definitions.
+ * Manages the lifecycle of all active factions on the server: creating
+ * them from configuration, loading and reconciling them with saved world
+ * data, assigning players, and applying resource changes.
  */
 public class FactionManager {
+
+    /** The single shared instance of this manager. */
     private static final FactionManager INSTANCE = new FactionManager();
 
-    /** Runtime map tracking all live active faction instances by their unique identifier names. */
+    /** All currently active factions, keyed by faction ID. */
     private final Map<String, Faction> activeFactions = new HashMap<>();
 
+    /** The currently bound world save data instance, or {@code null} if none is bound. */
+    private static FactionSavedData activeStorageInstance = null;
+
+    /**
+     * Returns the shared {@code FactionManager} instance.
+     *
+     * @return the singleton instance
+     */
     public static FactionManager getInstance() {
         return INSTANCE;
     }
 
     /**
-     * Initializes factions by loading mappings from factions.json.
-     * Validates origins, merges data with existing loaded factions to preserve state,
-     * and updates the active factions map.
+     * Rebuilds the active factions map from {@code factions.json},
+     * discarding any existing state. Factions with no valid origins are
+     * skipped entirely.
      */
     public void initializeFactionsFromConfig() {
         LogManager.info("Initializing server factions from configuration mappings directly...");
@@ -60,7 +74,10 @@ public class FactionManager {
     }
 
     /**
-     * Direct Persistence Restorer: Replaces running tracking maps directly with the data read from the world save files.
+     * Replaces the active factions map directly with previously saved
+     * faction data, bypassing config-based initialization.
+     *
+     * @param savedFactions the factions to load; does nothing if {@code null} or empty
      */
     public void loadFactionPersistenceData(Map<String, Faction> savedFactions) {
         if (savedFactions == null || savedFactions.isEmpty()) return;
@@ -69,11 +86,15 @@ public class FactionManager {
     }
 
     /**
-     * Parent Orchestrator: Ingests raw world file NBT tags and reconstructs the server-side active factions map.
-     * Natively executes the fallback configuration loop if the world save data is empty.
-     * Reconciles and synchronizes live storage assets with current configuration origin maps if data exists.
+     * Rebuilds the active factions map from saved world data, if present,
+     * then reconciles it against the current {@code factions.json}
+     * configuration so origin changes are picked up without losing saved
+     * state (balances, members, etc). Falls back to a clean
+     * config-only initialization if no save data exists.
+     *
+     * @param rootTag the root NBT tag loaded from the world save, or {@code null} if none exists
      */
-    public void reconcileFactionsAndLoad(net.minecraft.nbt.CompoundTag rootTag) {
+    public void reconcileFactionsAndLoad(CompoundTag rootTag) {
         // 1. FRESH RUN FALLBACK: If no save data exists, initialize cleanly from config definitions
         if (rootTag == null || !rootTag.contains("factions", 10)) { // 10 is CompoundTag
             LogManager.info("No persistent world save data found. Executing fallback configuration loader.");
@@ -81,19 +102,18 @@ public class FactionManager {
             return;
         }
 
-        // 2. LOAD SAVED RECURSION DATA: Reconstruct the runtime map exclusively from the world save file
+        // 2. LOAD SAVED DATA: Reconstruct the runtime map from the world save file
         LogManager.info("Persistent world records found. Restoring active faction data blocks from disk save...");
 
         this.activeFactions.clear();
-        net.minecraft.nbt.CompoundTag factionsCompound = rootTag.getCompound("factions");
+        CompoundTag factionsCompound = rootTag.getCompound("factions");
 
         for (String factionId : factionsCompound.getAllKeys()) {
             if (factionId == null) continue;
             String cleanId = factionId.trim();
-            net.minecraft.nbt.CompoundTag factionTag = factionsCompound.getCompound(factionId);
+            CompoundTag factionTag = factionsCompound.getCompound(factionId);
 
-            // Instantiate the Faction object with its persistent historical metrics intact
-            Faction faction = new Faction(cleanId, factionTag.getString("displayName"), new java.util.UUID(0,0));
+            Faction faction = new Faction(cleanId, factionTag.getString("displayName"), new UUID(0, 0));
             faction.setCogs(factionTag.getInt("cogs"));
             faction.setFood(factionTag.getInt("food"));
             faction.setMana(factionTag.getInt("mana"));
@@ -103,9 +123,9 @@ public class FactionManager {
             }
 
             if (factionTag.contains("members", 9)) { // 9 is ListTag
-                net.minecraft.nbt.ListTag membersList = factionTag.getList("members", 11); // 11 is IntArrayTag for UUIDs
+                ListTag membersList = factionTag.getList("members", 11); // 11 is IntArrayTag for UUIDs
                 for (int j = 0; j < membersList.size(); j++) {
-                    faction.getMembers().add(net.minecraft.nbt.NbtUtils.loadUUID(membersList.get(j)));
+                    faction.getMembers().add(NbtUtils.loadUUID(membersList.get(j)));
                 }
             }
 
@@ -124,8 +144,7 @@ public class FactionManager {
 
                 if (configFactionId.isEmpty() || configuredOrigins == null) continue;
 
-                // Process and filter valid origins from the updated JSON mappings
-                List<String> validOrigins = new java.util.ArrayList<>();
+                List<String> validOrigins = new ArrayList<>();
                 for (String originId : configuredOrigins) {
                     if (originId != null && OriginManager.isValidOrigin(originId.trim())) {
                         validOrigins.add(originId.trim());
@@ -134,11 +153,11 @@ public class FactionManager {
 
                 Faction activeFaction = this.activeFactions.get(configFactionId);
                 if (activeFaction != null) {
-                    // Update the valid origins array—this catches instances where roots moved around inside existing IDs!
+                    // Update valid origins in case roots were moved between existing factions
                     activeFaction.setValidOrigins(validOrigins);
                     LogManager.debug("Successfully reconciled updated config origins mapping for faction: " + configFactionId);
                 } else {
-                    // Fallback: If a faction exists in config but was completely missing from the save file, initialize it fresh
+                    // A faction exists in config but wasn't in the save file — create it fresh
                     Faction newFaction = new Faction(configFactionId, configFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
                     newFaction.setValidOrigins(validOrigins);
                     this.activeFactions.put(configFactionId, newFaction);
@@ -150,41 +169,52 @@ public class FactionManager {
     }
 
     /**
-     * Binds a player to an explicit faction instance profile by updating membership registries.
+     * Assigns a player to a faction, removing them from any other faction
+     * first to avoid duplicate membership.
+     *
+     * @param playerUUID the UUID of the player to assign
+     * @param factionId the ID of the faction to assign them to; does nothing if unknown
      */
     public void assignPlayerToFaction(UUID playerUUID, String factionId) {
         if (playerUUID == null || factionId == null) return;
         String cleanId = factionId.trim();
 
         if (this.activeFactions.containsKey(cleanId)) {
-            // Unbind player from all alternative faction structures first to prevent duplication collisions
+            // Remove the player from every faction first, to prevent duplicate membership
             for (Faction faction : this.activeFactions.values()) {
                 faction.removeMember(playerUUID);
             }
-            // Attach the member directly to their newly resolved home target container
             this.activeFactions.get(cleanId).addMember(playerUUID);
             LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
         }
     }
 
     /**
-     * Finds the faction ID that a player belongs to by scanning active runtime faction rosters.
+     * Finds the faction a player currently belongs to, by scanning all
+     * active factions' rosters.
+     *
+     * @param playerUUID the UUID of the player to look up
+     * @return the player's faction ID, or {@code null} if they're not in any faction
      */
     public static String getPlayerFactionId(UUID playerUUID) {
         if (playerUUID == null) return null;
         for (Faction faction : getInstance().getActiveFactions().values()) {
             if (faction.getMembers().contains(playerUUID)) {
-                return faction.getId(); // Assuming getMembers() and getId() exist on Faction
+                return faction.getId();
             }
         }
         return null;
     }
 
     /**
-     * Gets a specific asset balance for a player's faction without exposing the Faction instance.
-     * assetType can be "cogs", "food", or "mana".
+     * Reads a specific resource balance from a player's faction, without
+     * exposing the underlying {@link Faction} instance.
+     *
+     * @param playerUUID the UUID of the player whose faction to check
+     * @param assetType the resource to read: {@code "cogs"}, {@code "food"}, or {@code "mana"}
+     * @return the resource balance, or {@code 0} if the player has no faction or the type is unrecognized
      */
-    public static int getPlayerFactionAsset(java.util.UUID playerUUID, String assetType) {
+    public static int getPlayerFactionAsset(UUID playerUUID, String assetType) {
         String factionId = getPlayerFactionId(playerUUID);
         if (factionId == null) return 0;
         Faction faction = getInstance().getActiveFactions().get(factionId);
@@ -199,7 +229,10 @@ public class FactionManager {
     }
 
     /**
-     * Gets the total member count of a specific faction by its unique identifier string.
+     * Returns the number of members in a faction.
+     *
+     * @param factionId the faction's ID
+     * @return the member count, or {@code 0} if the faction doesn't exist
      */
     public static int getFactionMemberCount(String factionId) {
         if (factionId == null) return 0;
@@ -207,20 +240,24 @@ public class FactionManager {
         return (faction != null && faction.getMembers() != null) ? faction.getMembers().size() : 0;
     }
 
-    // Holds the transient reference to the active world save data session
-    private static FactionSavedData activeStorageInstance = null;
-
     /**
-     * Binds the current world level data storage instance to the live runtime memory layout.
+     * Binds the world save data instance used to flag pending changes for
+     * disk persistence.
+     *
+     * @param storage the world save data instance to bind
      */
     public static void setStorageInstance(FactionSavedData storage) {
         activeStorageInstance = storage;
     }
 
     /**
-     * Modifies a specific asset type for a faction by its string ID without exposing the Faction instance.
-     * @param assetType Can be "cogs", "food", or "mana"
-     * @param amount The integer amount to add (positive) or remove (negative)
+     * Adjusts a faction's resource balance by a signed amount, clamped to
+     * a minimum of zero, and flags the save data as dirty if bound.
+     *
+     * @param factionId the faction's ID
+     * @param assetType the resource to modify: {@code "cogs"}, {@code "food"}, or {@code "mana"}
+     * @param amount the amount to add (or, if negative, subtract)
+     * @return {@code true} if the change was applied; {@code false} if the faction or asset type is invalid
      */
     public static boolean modifyFactionAsset(String factionId, String assetType, int amount) {
         if (factionId == null || assetType == null) return false;
@@ -234,22 +271,86 @@ public class FactionManager {
             default -> { return false; }
         }
 
-        // Flag the storage layer as dirty natively if our static tracker is bound
         if (activeStorageInstance != null) {
             activeStorageInstance.setDirty();
         }
         return true;
     }
 
+    /**
+     * Returns the live map of all active factions.
+     *
+     * @return the active factions, keyed by faction ID
+     */
     public Map<String, Faction> getActiveFactions() {
         return this.activeFactions;
     }
 
     /**
-     * Safely reads a player's assigned faction display name using their raw account UUID identifier.
-     * Prevents external code classes from querying or leaking the underlying Faction instance structure.
+     * Returns a faction's display name by ID, without exposing the
+     * underlying {@link Faction} instance.
+     *
+     * @param factionId the faction's ID
+     * @return the faction's display name, or {@code null} if it doesn't exist
      */
-    public static String getPlayerFactionDisplayName(java.util.UUID playerUUID) {
+    public static String getFactionDisplayName(String factionId) {
+        if (factionId == null) return null;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        return (faction != null) ? faction.getDisplayName() : null;
+    }
+
+    /**
+     * Returns a defensive copy of a faction's member UUIDs by ID, so
+     * callers can't mutate the live roster.
+     *
+     * @param factionId the faction's ID
+     * @return a copy of the faction's member UUIDs, or an empty list if it doesn't exist
+     */
+    public static List<UUID> getFactionMemberUUIDs(String factionId) {
+        if (factionId == null) return List.of();
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null || faction.getMembers() == null) return List.of();
+        return new ArrayList<>(faction.getMembers());
+    }
+
+    /**
+     * Reads a specific resource balance for a faction by ID directly,
+     * without exposing the underlying {@link Faction} instance.
+     *
+     * @param factionId the faction's ID
+     * @param assetType the resource to read: {@code "cogs"}, {@code "food"}, or {@code "mana"}
+     * @return the resource balance, or {@code 0} if the faction or asset type is invalid
+     */
+    public static int getFactionAsset(String factionId, String assetType) {
+        if (factionId == null || assetType == null) return 0;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return 0;
+
+        return switch (assetType.toLowerCase()) {
+            case "cogs" -> faction.getCogs();
+            case "food" -> faction.getFood();
+            case "mana" -> faction.getMana();
+            default -> 0;
+        };
+    }
+
+    /**
+     * Returns a defensive copy of every currently active faction's ID.
+     *
+     * @return the IDs of all active factions
+     */
+    public static Set<String> getActiveFactionIds() {
+        return new HashSet<>(getInstance().getActiveFactions().keySet());
+    }
+
+    /**
+     * Reads a player's assigned faction display name, without exposing the
+     * underlying {@link Faction} instance.
+     *
+     * @param playerUUID the UUID of the player to look up
+     * @return the player's faction display name, or {@code "None Assigned"} if they have none
+     */
+    public static String getPlayerFactionDisplayName(UUID playerUUID) {
         if (playerUUID == null) {
             return "None Assigned";
         }
@@ -262,9 +363,15 @@ public class FactionManager {
     }
 
     /**
-     * Executes resource arithmetic operations securely inside the manager context.
-     * Prevents negative balances and automatically flags the active storage session as dirty.
-     * @return 1 on successful execution, 0 on total operational failure.
+     * Applies a named resource math operation to a faction's balance,
+     * clamped to a minimum of zero, and flags the save data as dirty if
+     * bound.
+     *
+     * @param factionId the faction's ID
+     * @param rawResource the resource to modify: {@code "cogs"}/{@code "cog"}, {@code "food"}, or {@code "mana"}
+     * @param amount the amount to apply
+     * @param operation the operation to apply: {@code "ADD"}, {@code "SUB"}, or {@code "SET"}
+     * @return {@code 1} on success, {@code 0} if the faction, resource, or operation is invalid
      */
     public static int executeEncapsulatedAssetMath(String factionId, String rawResource, int amount, String operation) {
         if (factionId == null || rawResource == null || operation == null) {
@@ -300,7 +407,6 @@ public class FactionManager {
             }
         }
 
-        // Automatically dispatch the disk-flushing flag if our tracker is initialized
         if (activeStorageInstance != null) {
             activeStorageInstance.setDirty();
         }
@@ -308,9 +414,11 @@ public class FactionManager {
     }
 
     /**
-     * Constructs a comprehensive review text matrix for a specified faction identifier.
-     * Extracts values internally and formats them with Minecraft color symbols cleanly.
-     * @return The complete compiled display string, or null if the faction cannot be matched.
+     * Builds a formatted, multi-line summary of a faction's full state:
+     * ID, leader, resource balances, member count, and allowed origins.
+     *
+     * @param factionId the faction's ID
+     * @return the formatted summary, or {@code null} if the faction doesn't exist
      */
     public static String getFactionSummaryString(String factionId) {
         if (factionId == null) {
@@ -326,7 +434,7 @@ public class FactionManager {
         if (faction.getValidOrigins() != null) {
             for (String rootId : faction.getValidOrigins()) {
                 originsBuilder.append("\n §7- ").append(rootId)
-                        .append(" (§e").append(com.drultralux.townsteadfactions.roots.OriginManager.getCleanName(rootId))
+                        .append(" (§e").append(OriginManager.getCleanName(rootId))
                         .append("§7)");
             }
         }
@@ -345,16 +453,18 @@ public class FactionManager {
     }
 
     /**
-     * Iterates through the entire active tracking registry to assemble a structured
-     * global listing index of all server factions currently loaded in system memory.
+     * Builds a formatted list of every active faction on the server, with
+     * each faction's ID, display name, and member count.
+     *
+     * @return the formatted list, or a placeholder message if no factions are active
      */
     public static String buildGlobalFactionListString() {
-        java.util.Map<String, Faction> activeMap = getInstance().getActiveFactions();
+        Map<String, Faction> activeMap = getInstance().getActiveFactions();
         if (activeMap == null || activeMap.isEmpty()) {
             return "There are currently zero active live factions registered in environment mappings.";
         }
 
-        java.lang.StringBuilder listBuilder = new java.lang.StringBuilder("§6=== Active Registered Server Factions (" + activeMap.size() + ") ===");
+        StringBuilder listBuilder = new StringBuilder("§6=== Active Registered Server Factions (" + activeMap.size() + ") ===");
         for (Faction faction : activeMap.values()) {
             if (faction != null) {
                 int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;

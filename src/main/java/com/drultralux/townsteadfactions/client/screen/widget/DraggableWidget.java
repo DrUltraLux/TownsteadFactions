@@ -1,37 +1,45 @@
 package com.drultralux.townsteadfactions.client.screen.widget;
 
-import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.gui.GuiGraphics;
 
 /**
- * Defines a self-contained, interactive window component frame capable of relative
- * position changes, focus tracking, and dynamic mouse drag layout adjustments.
+ * Base class for a draggable, minimizable widget in the faction dashboard.
+ * Handles position, size, dragging, and minimize/restore state; subclasses
+ * are responsible for their own rendering.
  */
 public abstract class DraggableWidget {
-    /** The absolute horizontal screen coordinate anchor point. */
+
+    /** The widget's current x position, in screen pixels. */
     protected int x;
-    /** The absolute vertical screen coordinate anchor point. */
+
+    /** The widget's current y position, in screen pixels. */
     protected int y;
-    /** The horizontal size boundary dimensions of the window layout box. */
+
+    /** The widget's width, in pixels. */
     protected int width;
-    /** The vertical size boundary dimensions of the window layout box. */
+
+    /** The widget's height, in pixels. */
     protected int height;
-    /** Condition state tracker indicating if a drag transaction is in progress. */
+
+    /** Whether the widget is currently being dragged. */
     protected boolean isDragging = false;
-    /** Condition state tracker indicating if the rendering viewport is collapsed. */
+
+    /** Whether the widget is currently minimized. */
     protected boolean isMinimized = false;
-    /** Horizontal vector distance mapping from the pointer click point. */
+
+    /** The x offset between the widget's origin and the mouse when a drag started. */
     protected int dragOffsetX;
-    /** Vertical vector distance mapping from the pointer click point. */
+
+    /** The y offset between the widget's origin and the mouse when a drag started. */
     protected int dragOffsetY;
 
     /**
-     * Allocates standard coordinate anchors to establish a draggable component frame.
+     * Creates a widget at the given position and size.
      *
-     * @param x the initial horizontal position vector coordinate
-     * @param y the initial vertical position vector coordinate
-     * @param width the default width boundary constraints size
-     * @param height the default height boundary constraints size
+     * @param x the initial x position
+     * @param y the initial y position
+     * @param width the widget's width
+     * @param height the widget's height
      */
     public DraggableWidget(int x, int y, int width, int height) {
         this.x = x;
@@ -41,21 +49,22 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Primary abstract visualization entry point managing pixel output layouts.
+     * Renders this widget. Implemented by subclasses.
      *
-     * @param graphics the active core rendering matrix context instance
-     * @param mouseX the current horizontal cursor coordinate layer tracking
-     * @param mouseY the current vertical cursor coordinate layer tracking
-     * @param partialTicks the current intermediate tick frame physics interpolation factor
+     * @param graphics the graphics context to draw with
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param partialTicks the partial tick time, for frame interpolation
      */
     public abstract void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks);
 
     /**
-     * Validates if cursor coordinates fall directly inside the active element bounds.
+     * Checks whether the given point falls within this widget's bounds,
+     * using its minimized height if currently minimized.
      *
-     * @param mouseX the horizontal coordinate of the pointer
-     * @param mouseY the vertical coordinate of the pointer
-     * @return true if collision detection registers successful boundary intersections
+     * @param mouseX the x position to check
+     * @param mouseY the y position to check
+     * @return {@code true} if the point is within the widget's bounds
      */
     public boolean isHovered(int mouseX, int mouseY) {
         int currentHeight = this.isMinimized ? 14 : this.height;
@@ -64,11 +73,12 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Validates if cursor coordinates hit the right minimize button rectangle.
+     * Checks whether the given point falls within the minimize button's
+     * bounds, in the widget's top-right corner.
      *
-     * @param mouseX the horizontal coordinate of the pointer
-     * @param mouseY the vertical coordinate of the pointer
-     * @return true if mouse coordinates collide directly with the minimize icon frame
+     * @param mouseX the x position to check
+     * @param mouseY the y position to check
+     * @return {@code true} if the point is within the minimize button
      */
     public boolean isMinimizeButtonHovered(int mouseX, int mouseY) {
         int btnX = this.x + this.width - 14;
@@ -77,12 +87,14 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Direct input click intercept node managing click trigger sequences.
+     * Handles a mouse click: toggles minimized state if the minimize
+     * button was clicked, or begins dragging if the widget body was
+     * clicked.
      *
-     * @param mouseX the target click horizontal position vector
-     * @param mouseY the target click vertical position vector
-     * @param button the tracking index code of the active mouse key pressed
-     * @return true if input focus processing loops consume the click event
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param button the mouse button pressed
+     * @return {@code true} if the click was handled by this widget
      */
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -101,13 +113,13 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Intercepts cursor vector transformations to update spatial coordinates for widgets.
+     * Updates this widget's position to follow the mouse while dragging.
      *
-     * @param mouseX the tracking vector horizontal pointer coordinate
-     * @param mouseY the tracking vector vertical pointer coordinate
-     * @param button the mouse click integer descriptor code value
-     * @param dragX the net relative change value along the horizontal offset coordinate axis
-     * @param dragY the net relative change value along the vertical offset coordinate axis
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param button the mouse button held
+     * @param dragX the horizontal drag delta, unused
+     * @param dragY the vertical drag delta, unused
      */
     public void mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.isDragging) {
@@ -117,11 +129,11 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Standard mouse button release handler node resetting structural tracking locks.
+     * Ends a drag when the mouse button is released.
      *
-     * @param mouseX the final horizontal click coordinate register point
-     * @param mouseY the final vertical click coordinate register point
-     * @param button the target mouse key integer index released
+     * @param mouseX the mouse x position, unused
+     * @param mouseY the mouse y position, unused
+     * @param button the mouse button released
      */
     public void mouseReleased(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -130,24 +142,24 @@ public abstract class DraggableWidget {
     }
 
     /**
-     * Pulls the horizontal vector position component for configuration lookups.
+     * Returns this widget's current x position.
      *
-     * @return the active horizontal coordinate integer parameter
+     * @return the x position
      */
     public int getX() { return this.x; }
 
     /**
-     * Pulls the vertical vector position component for configuration lookups.
+     * Returns this widget's current y position.
      *
-     * @return the active vertical coordinate integer parameter
+     * @return the y position
      */
     public int getY() { return this.y; }
 
     /**
-     * Adjusts the absolute spatial drawing coordinates of the container box template.
+     * Sets this widget's position directly.
      *
-     * @param x the new target horizontal vector screen position layer
-     * @param y the new target vertical vector screen position layer
+     * @param x the new x position
+     * @param y the new y position
      */
     public void setPosition(int x, int y) { this.x = x; this.y = y; }
 }

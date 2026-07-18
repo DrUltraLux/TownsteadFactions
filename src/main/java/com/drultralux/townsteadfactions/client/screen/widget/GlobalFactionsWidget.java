@@ -3,7 +3,6 @@ package com.drultralux.townsteadfactions.client.screen.widget;
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
 import com.drultralux.townsteadfactions.client.ClientFactionCache.ClientFactionData;
 import com.drultralux.townsteadfactions.client.screen.FactionPalette;
-import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -11,29 +10,47 @@ import net.minecraft.network.chat.Component;
 import java.util.Map;
 
 /**
- * A draggable dashboard interface component showing all discovered server factions.
+ * A draggable widget listing every faction currently known to the client,
+ * highlighting the player's own faction.
  */
 public class GlobalFactionsWidget extends DraggableWidget {
+
+    /** The font used to draw the title and faction rows. */
     private final Font font;
 
+    /**
+     * Creates the global factions widget at the given position with a
+     * fixed default size.
+     *
+     * @param x the x position of the widget
+     * @param y the y position of the widget
+     */
     public GlobalFactionsWidget(int x, int y) {
         super(x, y, 180, 120);
         this.font = Minecraft.getInstance().font;
     }
 
+    /**
+     * Renders the widget's background, title, and either a minimized
+     * summary or the full list of known factions.
+     *
+     * @param graphics the graphics context to draw with
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param partialTicks the partial tick time, for frame interpolation
+     */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
 
-        // Draw the main widget background panel bounding borders
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x99000000);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF555555);
 
         String titleText = "§6=== Factions ===";
-        graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, FactionPalette.getBarColor( "text_gold"), true);
+        graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, FactionPalette.getBarColor("text_gold"), true);
 
         if (this.isMinimized) {
             String minimizedText = "§7Factions [Min]";
-            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, FactionPalette.getBarColor( "text_gold"), true);
+            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, FactionPalette.getBarColor("text_gold"), true);
             return;
         }
 
@@ -43,26 +60,24 @@ public class GlobalFactionsWidget extends DraggableWidget {
         int currentYOffset = this.y + 22;
 
         if (globalFactions == null || globalFactions.isEmpty()) {
-            graphics.drawString(this.font, Component.literal("§cNo factions loaded."), this.x + 12, currentYOffset, FactionPalette.getBarColor( "text_blue"), true);
+            graphics.drawString(this.font, Component.literal("§cNo factions loaded."), this.x + 12, currentYOffset, FactionPalette.getBarColor("text_blue"), true);
             return;
         }
         for (ClientFactionData faction : globalFactions.values()) {
             if (faction == null || faction.id == null) continue;
 
-            // Apply bright visual indicators if the row is the player's own group
+            // Highlight the row if it represents the player's own faction
             boolean isOwnFaction = faction.id.equalsIgnoreCase(currentFactionId);
 
-            // Evaluates your true custom variables: faction.name and faction.roster.size() safely
             String rowString = isOwnFaction
                     ? "§a✔ §e" + faction.name + " §7(" + faction.roster.size() + ")"
                     : "§7• §f" + faction.name + " §7(" + faction.roster.size() + ")";
 
-            graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, FactionPalette.getBarColor( "text_blue"), true);
+            graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, FactionPalette.getBarColor("text_blue"), true);
 
-            // Advance the cursor downward for sequentially indexed rows
             currentYOffset += 12;
 
-            // Prevent text strings from bleeding past the physical height bounding lines of the element frame box
+            // Stop drawing rows once we'd overflow the widget's height
             if (currentYOffset >= this.y + this.height - 10) {
                 break;
             }

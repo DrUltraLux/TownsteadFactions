@@ -6,8 +6,9 @@ import net.neoforged.neoforge.client.settings.KeyConflictContext;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Centrally manages keyboard binding registrations for the Factions user interface.
- * Sets up safe operational conflict rules specifically isolated to standard in-game play contexts.
+ * Registers keyboard bindings for the faction user interface.
+ * <p>Bindings declared here are conflict-scoped to normal in-game play so
+ * they don't interfere with menu or GUI text input contexts.</p>
  */
 public class KeyMappings {
     /** The descriptive local translation string identifier for the key binding category. */

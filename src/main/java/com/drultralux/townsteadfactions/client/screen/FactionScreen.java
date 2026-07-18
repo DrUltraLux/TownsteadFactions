@@ -1,12 +1,16 @@
 package com.drultralux.townsteadfactions.client.screen;
 
-import com.drultralux.townsteadfactions.LogManager;
 import com.drultralux.townsteadfactions.client.KeyMappings;
-import com.drultralux.townsteadfactions.client.screen.widget.*;
+import com.drultralux.townsteadfactions.client.screen.widget.ActivityLogWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.DraggableWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.GlobalFactionsWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.PlayerModelWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.ResourceDisplayWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.RosterDisplayWidget;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import dev.marie.MariesLib.client.GuiValueRenderer;
-import dev.marie.MariesLib.client.MarieValueColors;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -14,44 +18,57 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Centrally coordinates the multi-tab client dashboard panel interface.
- * Implements resizable layout boundaries, custom configurations, and automated storage flushes.
+ * The main faction dashboard screen: a resizable, multi-tab window hosting
+ * the treasury, roster, global factions, avatar, and activity log widgets.
+ * Widget positions and window size are persisted to the client config.
  */
 public class FactionScreen extends Screen {
-    /** Collection array tracking the dynamic view sheets designated as screen pages. */
+
+    /** The tab panels making up this screen, in display order. */
     private final List<FactionTabPanel> tabPanels = new ArrayList<>();
-    /** Internal custom string indices mapping the identity labels of active pages. */
+
+    /** Internal identifiers for each tab, parallel to {@link #tabPanels}. */
     private final List<String> tabInternalIds = new ArrayList<>();
 
-    /** The currently active focus tab page selection array index. */
+    /** The index of the currently selected tab. */
     private int activeTabIndex = 0;
-    /** Object state tracker pointing to the specific sub-window widget currently undergoing cursor movement. */
+
+    /** The widget currently being dragged by the mouse, or {@code null} if none. */
     private DraggableWidget activeDraggedComponent = null;
 
-    /** The custom calculated pixel width dimension of the main housing panel frame container. */
+    /** The current width of the main dashboard window, in pixels. */
     private int boxWidth;
-    /** The custom calculated pixel height dimension of the main housing panel frame container. */
+
+    /** The current height of the main dashboard window, in pixels. */
     private int boxHeight;
-    /** Condition tracker tracking if the lower-right resize handle block is held down by the mouse. */
+
+    /** Whether the window's resize handle is currently being dragged. */
     private boolean isResizingBox = false;
-    /** Horizontal vector coordinate offset tracking current mouse scaling adjustments. */
+
+    /** The mouse x offset captured when a resize drag begins. */
     private int resizeOffsetX;
-    /** Vertical vector coordinate offset tracking current mouse scaling adjustments. */
+
+    /** The mouse y offset captured when a resize drag begins. */
     private int resizeOffsetY;
 
-    /** Reference pointer to the synchronized treasury values window widget instance. */
+    /** The treasury/resources widget instance. */
     private ResourceDisplayWidget treasuryWidget;
-    /** Reference pointer to the synchronized roster listing window widget instance. */
+
+    /** The faction roster widget instance. */
     private RosterDisplayWidget rosterWidget;
-    /** Reference pointer to the synchronized world factions overview window widget instance. */
+
+    /** The global factions overview widget instance. */
     private GlobalFactionsWidget globalWidget;
-    /** Reference pointer to the synchronized avatar overview window widget instance. */
+
+    /** The player avatar preview widget instance. */
     private PlayerModelWidget avatarWidget;
-    /** Reference pointer to the synchronized activity window widget instance. */
+
+    /** The activity log widget instance. */
     private ActivityLogWidget activityWidget;
 
     /**
-     * A single, reusable MariesLib functional instance handling all segment drawing loops.
+     * A shared bar-segment renderer passed to tab panels for drawing
+     * resource levels.
      */
     private final GuiValueRenderer segmentRenderer = (graphics, x, y, level) -> {
         int filledBlocks = (int) (level * 10);
@@ -61,12 +78,16 @@ public class FactionScreen extends Screen {
         }
     };
 
+    /**
+     * Creates the faction dashboard screen.
+     */
     public FactionScreen() {
         super(Component.literal("Faction Dashboard"));
     }
 
     /**
-     * Prepares configuration colors, injects overrides, and builds out tab layout panels.
+     * Builds the screen's tabs and widgets from the client configuration,
+     * falling back to defaults if no tab layout is configured.
      */
     @Override
     protected void init() {
@@ -110,7 +131,11 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Attaches a widget node straight to its target viewport tab layout container sheet array.
+     * Adds a widget to the tab at the given index, or to the first tab if
+     * the index is out of range.
+     *
+     * @param widget the widget to add
+     * @param preferredIndex the index of the tab to add it to
      */
     private void routeWidgetToTab(DraggableWidget widget, int preferredIndex) {
         if (preferredIndex >= 0 && preferredIndex < this.tabPanels.size()) {
@@ -120,6 +145,15 @@ public class FactionScreen extends Screen {
         }
     }
 
+    /**
+     * Renders the dashboard background, window frame, resize handle, tab
+     * headers, and the active tab's widgets.
+     *
+     * @param graphics the graphics context to draw with
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param partialTicks the partial tick time, for frame interpolation
+     */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
         int overlayTopColor = 0xC0101010;
@@ -149,20 +183,32 @@ public class FactionScreen extends Screen {
             this.tabPanels.get(this.activeTabIndex).renderContents(graphics, mouseX, mouseY, partialTicks, this.segmentRenderer);
         }
 
-        // Bypasses parent Screen.render background loops to prevent vanilla shader blur passes completely
-        for (net.minecraft.client.gui.components.Renderable renderable : this.renderables) {
+        // Render our own widgets directly, bypassing the parent Screen's background/blur pass.
+        for (Renderable renderable : this.renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTicks);
         }
     }
 
+    /**
+     * Intentionally left blank so vanilla's background blur shader pass is
+     * skipped for this screen.
+     *
+     * @param graphics the graphics context, unused
+     * @param mouseX the current mouse x position, unused
+     * @param mouseY the current mouse y position, unused
+     * @param partialTicks the partial tick time, unused
+     */
     @Override
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
-        // Leave completely blank! This physically destroys vanilla's post-processing blur shader hook loop.
-        // There should be something here later for the 3D render layer.
+        // Intentionally empty. TODO: consider a 3D render layer here.
     }
 
     /**
-     * Formats and renders the custom buttons row layer across the top header bounds.
+     * Renders the row of tab header buttons across the top of the window.
+     *
+     * @param graphics the graphics context to draw with
+     * @param mainX the x position of the main window
+     * @param mainY the y position of the main window
      */
     private void renderTabHeaders(GuiGraphics graphics, int mainX, int mainY) {
         int tabX = mainX + 20;
@@ -181,6 +227,15 @@ public class FactionScreen extends Screen {
         }
     }
 
+    /**
+     * Handles mouse clicks for resizing the window, switching tabs, and
+     * beginning a widget drag.
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param button the mouse button pressed
+     * @return {@code true} if the click was handled
+     */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (button == 0) {
@@ -217,6 +272,18 @@ public class FactionScreen extends Screen {
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
+    /**
+     * Handles dragging: either resizing the window, or moving the currently
+     * dragged widget (and switching its tab if dropped over a different
+     * tab header).
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param button the mouse button held
+     * @param dragX the horizontal drag delta
+     * @param dragY the vertical drag delta
+     * @return {@code true} if the drag was handled
+     */
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
         if (this.isResizingBox) {
@@ -251,6 +318,15 @@ public class FactionScreen extends Screen {
         return super.mouseDragged(mouseX, mouseY, button, dragX, dragY);
     }
 
+    /**
+     * Ends any active resize or widget drag and persists the resulting
+     * layout to the client config.
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param button the mouse button released
+     * @return {@code true} if the release was handled
+     */
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         this.isResizingBox = false;
@@ -262,6 +338,14 @@ public class FactionScreen extends Screen {
         return super.mouseReleased(mouseX, mouseY, button);
     }
 
+    /**
+     * Closes the dashboard when the dashboard hotkey or Escape is pressed.
+     *
+     * @param keyCode the key code pressed
+     * @param scanCode the platform-specific scan code
+     * @param modifiers the modifier key bitmask
+     * @return {@code true} if the key press was handled
+     */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
         if (KeyMappings.OPEN_FACTION_DASHBOARD.matches(keyCode, scanCode) || keyCode == 256) {
@@ -271,6 +355,9 @@ public class FactionScreen extends Screen {
         return super.keyPressed(keyCode, scanCode, modifiers);
     }
 
+    /**
+     * Persists the current widget layout before closing the screen.
+     */
     @Override
     public void onClose() {
         flushPlacementsToConfig();
@@ -278,7 +365,9 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Translates coordinates to relative metrics and flushes them down to configuration blocks.
+     * Converts each widget's absolute position to a position relative to
+     * the window, and its current tab, then saves them all to the client
+     * config.
      */
     private void flushPlacementsToConfig() {
         int mainX = this.width / 2 - (this.boxWidth / 2);
@@ -302,7 +391,10 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Determines which tab index slot currently holds an active widget reference.
+     * Finds which tab currently contains the given widget.
+     *
+     * @param widget the widget to locate
+     * @return the index of the tab containing it, or {@code 0} if not found
      */
     private int findWidgetTabLocation(DraggableWidget widget) {
         for (int i = 0; i < this.tabPanels.size(); i++) {
@@ -311,6 +403,11 @@ public class FactionScreen extends Screen {
         return 0;
     }
 
+    /**
+     * Indicates this screen should not pause the game while open.
+     *
+     * @return always {@code false}
+     */
     @Override
     public boolean isPauseScreen() { return false; }
 }

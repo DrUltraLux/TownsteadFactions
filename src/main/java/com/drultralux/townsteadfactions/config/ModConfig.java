@@ -1,6 +1,10 @@
 package com.drultralux.townsteadfactions.config;
 
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.utils.LogManager;
+import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.reflect.TypeToken;
+import net.neoforged.fml.loading.FMLPaths;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import java.io.File;
 import java.io.FileReader;
@@ -13,17 +17,26 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * An entirely agnostic configuration processing framework for the modification.
- * Centrally coordinates TOML files for Client/Common via reflection, while handling
- * the Factions setup through a dedicated, open-ended custom JSON backend.
+ * Central configuration handler for Townstead Factions. Builds the
+ * client/common TOML config specs reflectively from plain model objects,
+ * and separately manages the faction-to-origin mapping as a hand-editable
+ * JSON file.
  */
 public class ModConfig {
+
+    /** The built NeoForge config spec for client-side settings. */
     public static final ModConfigSpec CLIENT_SPEC;
+
+    /** The client-side settings container, backed by {@link ClientConfigModel}. */
     public static final GenericConfigContainer CLIENT;
 
+    /** The built NeoForge config spec for common (client+server) settings. */
     public static final ModConfigSpec COMMON_SPEC;
+
+    /** The common settings container, backed by {@link CommonConfigModel}. */
     public static final GenericConfigContainer COMMON;
 
+    /** The faction-to-origin mapping, loaded from {@code factions.json}. */
     public static final FactionsConfigContainer FACTIONS = new FactionsConfigContainer();
 
     static {
@@ -37,11 +50,12 @@ public class ModConfig {
     }
 
     /**
-     * Recursively parses any object model structure or map registry to generate agnostic configuration spec nodes.
+     * Recursively walks a model object's public fields (or a map's
+     * entries) and registers a corresponding config value for each one.
      *
-     * @param builder the active NeoForge configuration layout utility
-     * @param modelObject the target model object data source being parsed
-     * @param targetRegistry the global memory map collecting active configuration nodes
+     * @param builder the config spec builder to register values on
+     * @param modelObject the model instance or map to parse
+     * @param targetRegistry the map to record each registered config value into, keyed by field/entry name
      */
     public static void parseModelReflectively(ModConfigSpec.Builder builder, Object modelObject, Map<String, ModConfigSpec.ConfigValue<?>> targetRegistry) {
         if (modelObject == null) return;
@@ -67,7 +81,15 @@ public class ModConfig {
     }
 
     /**
-     * Internal processor checking object data types to pipe nodes cleanly into type-safe NeoForge blocks.
+     * Registers a single config value based on the runtime type of
+     * {@code payload}: nested maps become a config group, and booleans,
+     * integers, and lists get typed config values; anything else falls
+     * back to a string value via {@link Object#toString()}.
+     *
+     * @param builder the config spec builder to register the value on
+     * @param nodeKey the config key for this value
+     * @param payload the value to register
+     * @param registry the map to record the registered config value into
      */
     public static void processFieldNode(ModConfigSpec.Builder builder, String nodeKey, Object payload, Map<String, ModConfigSpec.ConfigValue<?>> registry) {
         if (payload == null) return;
@@ -94,14 +116,25 @@ public class ModConfig {
     }
 
     /**
-     * Universal agnostic configuration shell container tracking parsed configuration nodes for any model file.
+     * A config container built reflectively from a plain model object,
+     * providing typed getters for its values by key.
      */
     public static class GenericConfigContainer {
-        /** Complete underlying registry mapping short string keys to active NeoForge runtime fields. */
+
+        /** Registered config values, keyed by field/entry name. */
         public final Map<String, ModConfigSpec.ConfigValue<?>> valuesRegistry = new HashMap<>();
-        /** Backing reference pointer to the original instanced configuration model data source class. */
+
+        /** The model instance this container was built from. */
         public final Object backingModelSource;
 
+        /**
+         * Builds a config container from a model instance, optionally
+         * nested under a root config group.
+         *
+         * @param builder the config spec builder to register values on
+         * @param modelInstance the model object to parse
+         * @param rootGroup the config group name to nest values under, or {@code null}/empty for none
+         */
         GenericConfigContainer(ModConfigSpec.Builder builder, Object modelInstance, String rootGroup) {
             this.backingModelSource = modelInstance;
 
@@ -115,7 +148,11 @@ public class ModConfig {
         }
 
         /**
-         * Universal getter enabling other classes to fetch any boolean field safely by key string path.
+         * Reads a boolean config value by key.
+         *
+         * @param key the config key to read
+         * @param fallback the value to return if the key is missing or not a boolean
+         * @return the config value, or {@code fallback}
          */
         public boolean getBoolean(String key, boolean fallback) {
             if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof Boolean booleanValue) {
@@ -125,7 +162,11 @@ public class ModConfig {
         }
 
         /**
-         * Universal getter enabling other classes to fetch any integer field safely by key string path.
+         * Reads an integer config value by key.
+         *
+         * @param key the config key to read
+         * @param fallback the value to return if the key is missing or not an integer
+         * @return the config value, or {@code fallback}
          */
         public int getInteger(String key, int fallback) {
             if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof Integer integerValue) {
@@ -135,7 +176,11 @@ public class ModConfig {
         }
 
         /**
-         * Universal getter enabling other classes to fetch a clean, warning-free list of strings by key path.
+         * Reads a list-of-strings config value by key, filtering out any
+         * non-string elements.
+         *
+         * @param key the config key to read
+         * @return the config value as a list of strings, or an empty list if missing or not a list
          */
         public List<String> getStringList(String key) {
             if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof List<?> rawList) {
@@ -152,18 +197,24 @@ public class ModConfig {
     }
 
     /**
-     * Dedicated dynamic JSON container for faction profiles.
-     * Bypasses TOML constraints completely to let players freely add, remove, and rename configuration key sections natively.
+     * Holds the faction-to-origin mapping loaded from {@code factions.json}.
+     * Unlike the TOML-backed containers, this is a free-form JSON map so
+     * players can freely add, remove, or rename factions without needing
+     * fixed config keys.
      */
     public static class FactionsConfigContainer {
+
+        /** The currently loaded faction-to-origin mapping. */
         private final Map<String, List<String>> factionsCache = new HashMap<>();
+
+        /** The default faction/origin data used to seed a fresh {@code factions.json}. */
         public final FactionConfigModel defaultModelData = new FactionConfigModel();
 
         /**
-         * Master dynamic extractor loop that crawls through all loaded list properties.
-         * Merges all active custom user configurations without hardcoded keys.
+         * Returns every origin ID assigned to any faction, flattened into a
+         * single list.
          *
-         * @return a completely type-safe collection of all origins loaded from the file system
+         * @return all origin IDs across all loaded factions
          */
         public List<String> getFactionRegistryList() {
             List<String> combinedOrigins = new ArrayList<>();
@@ -176,13 +227,20 @@ public class ModConfig {
         }
 
         /**
-         * Direct getter allowing other manager classes to query the live loaded factions data map.
+         * Returns the live faction-to-origin mapping.
+         *
+         * @return the map of faction name to its assigned origin IDs
          */
         public Map<String, List<String>> getFactionsMap() {
             return this.factionsCache;
         }
 
-        /** Internal setter used by the configuration loader to refresh memory layers upon file reads. */
+        /**
+         * Replaces the cached faction-to-origin mapping. Used by the config
+         * loader when {@code factions.json} is read.
+         *
+         * @param freshMap the new mapping to cache
+         */
         protected void updateCache(Map<String, List<String>> freshMap) {
             this.factionsCache.clear();
             this.factionsCache.putAll(freshMap);
@@ -190,8 +248,9 @@ public class ModConfig {
     }
 
     /**
-     * Invoked safely by ModConfigEvent once client/common TOML sheets are completely memory-bound.
-     * Safely updates logging flags and reads your factions JSON without inducing dangerous infinite file-saving loops.
+     * Called once the client/common TOML configs have finished loading.
+     * Applies the debug logging setting and loads (or creates, on first
+     * launch) {@code factions.json}.
      */
     public static void onConfigLoad() {
         try {
@@ -200,13 +259,13 @@ public class ModConfig {
             }
 
             if (CLIENT_SPEC.isLoaded()) {
-                File subDir = new File(net.neoforged.fml.loading.FMLPaths.CONFIGDIR.get().toFile(), "townsteadfactions");
+                File subDir = new File(FMLPaths.CONFIGDIR.get().toFile(), "townsteadfactions");
                 if (!subDir.exists()) {
                     subDir.mkdirs();
                 }
 
                 File jsonFile = new File(subDir, "factions.json");
-                com.google.gson.Gson gson = new com.google.gson.GsonBuilder().setPrettyPrinting().create();
+                Gson gson = new GsonBuilder().setPrettyPrinting().create();
 
                 if (!jsonFile.exists()) {
                     LogManager.info("First launch context captured. Writing custom indented factions.json structure...");
@@ -216,7 +275,7 @@ public class ModConfig {
                     FACTIONS.updateCache(FACTIONS.defaultModelData.factions);
                 } else {
                     try (FileReader reader = new FileReader(jsonFile)) {
-                        Type expectedMapSignature = new com.google.gson.reflect.TypeToken<Map<String, List<String>>>(){}.getType();
+                        Type expectedMapSignature = new TypeToken<Map<String, List<String>>>(){}.getType();
                         Map<String, List<String>> loadedData = gson.fromJson(reader, expectedMapSignature);
                         if (loadedData != null) {
                             FACTIONS.updateCache(loadedData);

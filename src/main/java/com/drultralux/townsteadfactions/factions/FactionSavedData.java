@@ -9,28 +9,41 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Centrally manages the binary NBT persistence layer serialization for live faction profiles.
- * Flushes active currency balances and membership registers directly down to world files on save checkpoints.
+ * Handles NBT persistence of faction data to and from the world save,
+ * writing the current in-memory faction state on save and preserving the
+ * raw loaded data for the server event layer to read on load.
  */
 public class FactionSavedData extends SavedData {
+
+    /** The raw NBT tag loaded from disk, kept for the server event layer to read on world load. */
     public CompoundTag rawLoadedTag = new CompoundTag();
 
     /**
-     * Natively loads the raw NBT data from disk on world boot.
-     * Acts as a pure, stateless reader file wrapper.
+     * Loads faction save data from an NBT tag. The tag is stored as-is;
+     * actual faction reconstruction happens elsewhere once the server is
+     * ready to read it.
+     *
+     * @param tag the NBT tag loaded from disk, or {@code null} if none exists
+     * @param registries the registry lookup provider, unused here but required by the {@link SavedData} API
+     * @return a new {@code FactionSavedData} holding the loaded tag
      */
     public static FactionSavedData load(CompoundTag tag, HolderLookup.Provider registries) {
         FactionSavedData data = new FactionSavedData();
         if (tag != null) {
-            // Cache the raw tag safely inside the instance container so our server event layer can read it
             data.rawLoadedTag = tag;
         }
         return data;
     }
 
+    /**
+     * Serializes all currently active factions into the given NBT tag.
+     *
+     * @param tag the NBT tag to write faction data into
+     * @param provider the registry lookup provider, unused here but required by the {@link SavedData} API
+     * @return the same {@code tag}, with a {@code "factions"} entry populated
+     */
     @Override
     public CompoundTag save(CompoundTag tag, HolderLookup.Provider provider) {
-        // Read directly from the live runtime memory registry immediately before disk write
         Map<String, Faction> liveFactions = FactionManager.getInstance().getActiveFactions();
 
         CompoundTag factionsTag = new CompoundTag();

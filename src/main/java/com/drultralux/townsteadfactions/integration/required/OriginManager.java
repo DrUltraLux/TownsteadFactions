@@ -1,7 +1,8 @@
-package com.drultralux.townsteadfactions.roots;
+package com.drultralux.townsteadfactions.integration.required;
 
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
+import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.aetherianartificer.townstead.root.RootRegistry;
 import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.aetherianartificer.townstead.root.Root;
@@ -12,24 +13,25 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Directly synchronizes with Townstead registries to cache rootID and cleanID mappings.
- * Serves validation and player origin data directly up to the FactionManager.
+ * Mirrors origin (race) data from the Townstead mod and maps players to
+ * factions based on their assigned origin.
  */
 public class OriginManager {
+
     /**
-     * Mirror cache of Townstead's master map loaded from datapacks.
-     * Key: rootID (e.g., "townstead_classic:high_elf") -> Value: cleanID (e.g., "High Elf")
+     * A cache of Townstead's origins, mapping root ID (e.g.
+     * {@code "townstead_classic:high_elf"}) to display name (e.g.
+     * {@code "High Elf"}).
      */
     private static final Map<String, String> originsCache = new HashMap<>();
 
     /**
-     * Pulls the complete list of active origins loaded into memory directly from Townstead.
-     * Maps native properties safely without relying on raw string formatting loops.
+     * Rebuilds {@link #originsCache} from Townstead's current
+     * {@link RootRegistry}. Safe to call again to refresh the cache.
      */
     public static void initializeFromTownstead() {
         originsCache.clear();
         try {
-            // Fetch the raw list directly from Townstead's core API registry
             List<Root> townsteadList = RootRegistry.all();
 
             if (townsteadList != null) {
@@ -53,11 +55,11 @@ public class OriginManager {
     }
 
     /**
-     * Verifies whether a given identifier represents a true, active origin loaded by Townstead.
-     * Used by FactionManager to prevent the creation of dead or unmapped factions.
+     * Checks whether a root ID corresponds to a currently known Townstead
+     * origin. Used to prevent factions from referencing unmapped origins.
      *
-     * @param rootId The unique structural identifier string
-     * @return true if the rootID exists inside Townstead's registries, false otherwise
+     * @param rootId the root ID to check
+     * @return {@code true} if the root ID exists in Townstead's registry
      */
     public static boolean isValidOrigin(String rootId) {
         if (rootId == null) return false;
@@ -65,11 +67,12 @@ public class OriginManager {
     }
 
     /**
-     * Fetches the clean English display title corresponding to a given rootID string.
-     * Used by UI screens, overlays, and chat formatting modules.
+     * Returns the human-readable display name for a root ID.
      *
-     * @param rootId The structural identifier string
-     * @return the clean English display string title (e.g., "High Elf")
+     * @param rootId the root ID to look up
+     * @return the display name (e.g. {@code "High Elf"}), or the original
+     *         {@code rootId} if it isn't known, or {@code "Unknown"} if
+     *         {@code rootId} is {@code null}
      */
     public static String getCleanName(String rootId) {
         if (rootId == null) return "Unknown";
@@ -77,23 +80,24 @@ public class OriginManager {
     }
 
     /**
-     * Direct getter to expose our tracked origins map registry.
+     * Returns the live origins cache.
+     *
+     * @return the map of root ID to display name
      */
     public static Map<String, String> getOriginsCache() {
         return originsCache;
     }
 
     /**
-     * Examines a joining player's selected character profile to resolve their target faction membership.
-     * Fully trusts Townstead's pre-validated rootId data and maps it straight to factions.json properties.
+     * Resolves a logging-in player's origin and assigns them to the
+     * faction configured to accept that origin, if one is found.
      *
-     * @param player The target server player logging in
+     * @param player the player who just logged in
      */
     public static void fetchInitialRootID(ServerPlayer player) {
         try {
             UUID playerUUID = player.getUUID();
 
-            // Directly extract the pre-validated string ID from Townstead's player capabilities
             String playerRootId = PlayerRoot.getRootId(player);
 
             if (playerRootId == null || playerRootId.trim().isEmpty()) {
@@ -104,7 +108,7 @@ public class OriginManager {
             String cleanedRootId = playerRootId.trim();
             String targetFactionKey = null;
 
-            // Scan through factions.json to see which category array contains this specific player rootId
+            // Find which faction's configured origin list contains this player's root ID
             for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
                 List<String> allowedOrigins = entry.getValue();
                 if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
@@ -115,7 +119,7 @@ public class OriginManager {
 
             if (targetFactionKey != null) {
                 LogManager.info("Login Match: Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
-                com.drultralux.townsteadfactions.factions.FactionManager.getInstance().assignPlayerToFaction(playerUUID, targetFactionKey);
+                FactionManager.getInstance().assignPlayerToFaction(playerUUID, targetFactionKey);
             }
         } catch (Exception e) {
             LogManager.error("Failed to safely process login faction validation metrics for player: " + player.getName().getString(), e);

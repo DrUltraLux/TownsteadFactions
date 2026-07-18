@@ -6,23 +6,25 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Houses pre-defined hard drive defaults and mapping parameters for user-interface elements.
- * Preserves the visual ordering specifications of core window dimensions and tab sorting metrics.
+ * Holds default configuration values for the client-side faction UI, such
+ * as window size, widget positions, and tab ordering.
  */
 public class ClientConfigModel {
-    /** Structural registry data map storing configuration nodes mapped to layout labels. */
+
+    /** Interface settings keyed by setting name. */
     public final Map<String, Object> interfaceSettings = new LinkedHashMap<>();
 
     /**
-     * Initializes default spatial coordinate markers and builds out the customized tab collection arrays.
+     * Creates the client configuration model and populates it with default
+     * window bounds, widget positions, and tab order.
      */
     public ClientConfigModel() {
-        // Core Resizable Overlay Frame Window Bounding Metrics
+        // Main window bounds
         interfaceSettings.put("mainBoxWidth", 360);
         interfaceSettings.put("mainBoxHeight", 220);
         interfaceSettings.put("allowWindowDragging", true);
 
-        // Individual Draggable Sub-Widget Coordinate Snap Maps
+        // Default positions and tab assignments for each draggable widget
         interfaceSettings.put("treasuryWidgetX", -50);
         interfaceSettings.put("treasuryWidgetY", -30);
         interfaceSettings.put("treasuryWidgetTab", 0);
@@ -43,7 +45,7 @@ public class ClientConfigModel {
         interfaceSettings.put("activityWidgetY", 90);
         interfaceSettings.put("activityWidgetTab", 0);
 
-        // Translated Tab Names Selection Index Strings
+        // Default tab order, as "ID;Display Name" pairs
         List<String> defaultTabOrder = new ArrayList<>();
         defaultTabOrder.add("OVERVIEW;Overview");
         defaultTabOrder.add("ROSTER;Roster");

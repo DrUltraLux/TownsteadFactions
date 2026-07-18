@@ -1,10 +1,15 @@
 package com.drultralux.townsteadfactions;
 
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
-import com.drultralux.townsteadfactions.client.ClientModEvents;
-import com.drultralux.townsteadfactions.client.FactionSyncPayload;
+import com.drultralux.townsteadfactions.events.ClientModEvents;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.events.FactionServerEvents;
+import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import com.drultralux.townsteadfactions.network.FactionPacketDispatcher;
+import com.drultralux.townsteadfactions.network.payload.FactionC2SPayload;
+import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
+import com.drultralux.townsteadfactions.utils.LogManager;
+import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
@@ -17,22 +22,21 @@ import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.registration.PayloadRegistrar;
 
 /**
- * Main initialization constructor launchpad class for the Townstead Factions modification.
- * Coordinates bootstrap tasks, hooks up nested configuration paths, and links independent event subsystems safely.
+ * The main mod entry point for Townstead Factions. Registers config
+ * specs, network payload handlers, and client/server event listeners.
  */
 @Mod("townsteadfactions")
 public class TownsteadFactions {
-    /**
-     * Unique text workspace key representing the mod namespace inside registries.
-     */
+
+    /** This mod's unique namespace ID, used throughout registries and resource locations. */
     public static final String MODID = "townsteadfactions";
 
     /**
-     * Modern NeoForge 1.21.1 constructor entrypoint executed dynamically by the mod loader during boot.
-     * Registers nested configuration subfolders and maps event tracking channels safely.
+     * Constructed by NeoForge during mod loading. Registers this mod's
+     * configs, network payloads, and event listeners.
      *
-     * @param modEventBus the specific event pipeline managing mod setup tasks
-     * @param container the context configuration tracking this mod's metadata records
+     * @param modEventBus the mod-specific event bus used for setup-time events
+     * @param container this mod's container, used to register configuration files
      */
     public TownsteadFactions(IEventBus modEventBus, ModContainer container) {
         LogManager.info("Initializing launchpad sequences via mod constructor...");
@@ -41,20 +45,26 @@ public class TownsteadFactions {
         container.registerConfig(Type.COMMON, ModConfig.COMMON_SPEC, "townsteadfactions/common.toml");
         //container.registerConfig(Type.COMMON, ModConfig.FACTIONS_SPEC, "townsteadfactions/factions.toml");
 
-        // Hook lifecycle tracking to safely run onConfigLoad ONLY after files are verified on disk
+        // Only handle config-loaded events once files are verified on disk
         modEventBus.addListener(this::handleConfigEvent);
 
-        // Correct registration syntax for lifecycle channels
         modEventBus.addListener((RegisterPayloadHandlersEvent event) -> {
             final PayloadRegistrar registrar = event.registrar(MODID).versioned("1.0.0");
 
             registrar.playToClient(
-                    FactionSyncPayload.TYPE,
-                    FactionSyncPayload.STREAM_CODEC,
+                    FactionS2CPayload.TYPE,
+                    FactionS2CPayload.STREAM_CODEC,
+                    (payload, context) -> context.enqueueWork(() ->
+                            FactionPacketDispatcher.dispatchS2C(payload.action(), payload.data()))
+            );
+
+            registrar.playToServer(
+                    FactionC2SPayload.TYPE,
+                    FactionC2SPayload.STREAM_CODEC,
                     (payload, context) -> context.enqueueWork(() -> {
-                        LogManager.debug("Received a high-capacity data matrix packet stream from the server.");
-                        // Pass the unified NBT compound container straight down to your client cache system
-                        ClientFactionCache.readSyncStream(payload.nbtData());
+                        if (context.player() instanceof ServerPlayer serverPlayer) {
+                            FactionPacketDispatcher.dispatchC2S(serverPlayer, payload.action(), payload.data());
+                        }
                     })
             );
 
@@ -66,16 +76,18 @@ public class TownsteadFactions {
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.register(ClientModEvents.ClientModBusEvents.class);
             NeoForge.EVENT_BUS.register(ClientModEvents.ClientGameBusEvents.class);
+            FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC, ClientFactionCache::readSyncStream);
+            FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC_DELTA, ClientFactionCache::applyDelta);
         }
 
         LogManager.info("Launchpad constructor sequence complete. Processing context transferred.");
     }
 
     /**
-     * Handles background config refresh operations when variables change or finish loading on the disk.
-     * Safely executes processing tasks without triggering early instantiation crashes.
+     * Reloads this mod's runtime config values whenever its config file
+     * changes or finishes loading.
      *
-     * @param event the active configuration update context event
+     * @param event the config event; ignored unless it's for this mod
      */
     private void handleConfigEvent(final ModConfigEvent event) {
         if (event.getConfig().getModId().equals(MODID)) {

@@ -1,50 +1,76 @@
 package com.drultralux.townsteadfactions.client.screen.widget;
 
-import com.drultralux.townsteadfactions.LogManager;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
 import com.drultralux.townsteadfactions.client.screen.FactionPalette;
 import com.drultralux.townsteadfactions.client.screen.elements.ColorBarValueRenderer;
 import com.drultralux.townsteadfactions.client.screen.elements.TextLineValueRenderer;
-import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
+/**
+ * A draggable widget displaying the local player's faction resources:
+ * power, airships, treasury, food, and mana.
+ */
 public class ResourceDisplayWidget extends DraggableWidget {
+
+    /** Text renderers for each section header and label. */
     private final TextLineValueRenderer powerHeader, resourcesHeader, airshipsLabel, treasuryLabel, foodLabel, manaLabel;
+
+    /** Bar renderers for each resource's fill level. */
     private final ColorBarValueRenderer powerBar, airshipsBar, treasuryBar, foodBar, manaBar;
+
+    /** The font used to draw labels and values. */
     private final Font font;
 
+    /**
+     * Creates the resource display widget at the given position with a
+     * fixed default size, initializing all its labels and bars.
+     *
+     * @param x the x position of the widget
+     * @param y the y position of the widget
+     */
     public ResourceDisplayWidget(int x, int y) {
         super(x, y, 220, 100);
         this.font = Minecraft.getInstance().font;
 
-        this.powerHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§bPOWER", FactionPalette.getBarColor( "text_pink"));
-        this.airshipsLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Airships", FactionPalette.getBarColor( "text_pink"));
-        this.resourcesHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§eRESOURCES", FactionPalette.getBarColor( "text_gold"));
-        this.treasuryLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Treasury:", FactionPalette.getBarColor( "gold"));
-        this.foodLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Food Supplies", FactionPalette.getBarColor( "food"));
-        this.manaLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Mana Stockpile", FactionPalette.getBarColor( "mana"));
+        this.powerHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§bPOWER", FactionPalette.getBarColor("text_pink"));
+        this.airshipsLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Airships", FactionPalette.getBarColor("text_pink"));
+        this.resourcesHeader = new TextLineValueRenderer(Minecraft.getInstance().font, "§eRESOURCES", FactionPalette.getBarColor("text_gold"));
+        this.treasuryLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Treasury:", FactionPalette.getBarColor("gold"));
+        this.foodLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Food Supplies", FactionPalette.getBarColor("food"));
+        this.manaLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Mana Stockpile", FactionPalette.getBarColor("mana"));
 
-        this.powerBar = new ColorBarValueRenderer(FactionPalette.getBarColor( "power"));
-        this.airshipsBar = new ColorBarValueRenderer(FactionPalette.getBarColor( "ships"));
-        this.treasuryBar = new ColorBarValueRenderer(FactionPalette.getBarColor( "gold"));
-        this.foodBar = new ColorBarValueRenderer(FactionPalette.getBarColor( "food"));
-        this.manaBar = new ColorBarValueRenderer(FactionPalette.getBarColor( "mana"));
+        this.powerBar = new ColorBarValueRenderer(FactionPalette.getBarColor("power"));
+        this.airshipsBar = new ColorBarValueRenderer(FactionPalette.getBarColor("ships"));
+        this.treasuryBar = new ColorBarValueRenderer(FactionPalette.getBarColor("gold"));
+        this.foodBar = new ColorBarValueRenderer(FactionPalette.getBarColor("food"));
+        this.manaBar = new ColorBarValueRenderer(FactionPalette.getBarColor("mana"));
     }
 
+    /**
+     * Renders the widget's minimized header or, when expanded, its full
+     * two-column layout of resource labels and bars, pulling current
+     * values from {@link ClientFactionCache}.
+     *
+     * @param graphics the graphics context to draw with
+     * @param mouseX the current mouse x position
+     * @param mouseY the current mouse y position
+     * @param partialTicks the partial tick time, for frame interpolation
+     */
     @Override
-    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicksr) {
-        //Maintain minimize window and draggable background logic
+    public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        // Minimized: draw only the header bar with a re-expand button
         if (this.isMinimized) {
             int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
             graphics.fill(this.x, this.y, this.x + this.width, this.y + 14, headerColor);
             graphics.renderOutline(this.x, this.y, this.width, 14, 0xFF555555);
 
             String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[+]" : "§7[+]";
-            graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, FactionPalette.getBarColor( "text_gold"), false);
-            graphics.drawString(this.font, "§6§lRESOURCES (MIN)", this.x + 6, this.y + 3, FactionPalette.getBarColor( "text_gold"), false);
+            graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, FactionPalette.getBarColor("text_gold"), false);
+            graphics.drawString(this.font, "§6§lRESOURCES (MIN)", this.x + 6, this.y + 3, FactionPalette.getBarColor("text_gold"), false);
             return;
         }
 
@@ -53,9 +79,8 @@ public class ResourceDisplayWidget extends DraggableWidget {
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF666666);
 
         String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
-        graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, FactionPalette.getBarColor( "text_gold"), false);
+        graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, FactionPalette.getBarColor("text_gold"), false);
 
-        //Fetch Live Cache Values
         String activeId = ClientFactionCache.getAssignedFactionId();
         ClientFactionCache.ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
 
@@ -70,25 +95,21 @@ public class ResourceDisplayWidget extends DraggableWidget {
         float foodPercent = Math.min(1.0F, Math.max(0.0F, (float) liveFood / 10.0F));
         float manaPercent = Math.min(1.0F, Math.max(0.0F, (float) liveMana / 10.0F));
 
-        LogManager.info("Cache Diagnostic -> Cogs: {"+liveCogs+"}");
-        LogManager.info("Cache Diagnostic -> Food: {"+liveFood+"}");
-        LogManager.info("Cache Diagnostic -> Mana: {"+liveMana+"}");
+        LogManager.debug("Cache Diagnostic -> Cogs: {" + liveCogs + "}");
+        LogManager.debug("Cache Diagnostic -> Food: {" + liveFood + "}");
+        LogManager.debug("Cache Diagnostic -> Mana: {" + liveMana + "}");
 
-        // ==========================================
-        // --- COLUMN 1: LEFT SIDE (POWER & AIRSHIPS)
-        // ==========================================
+        // --- COLUMN 1: LEFT SIDE (POWER & AIRSHIPS) ---
         int col1X = this.x + 8;
 
         this.powerHeader.render(graphics, col1X, this.y + 6, 0.0F);
-        graphics.drawString(this.font, Component.literal("Power: " + factionSize + " / " + factionSize), col1X, this.y + 18, FactionPalette.getBarColor( "text_pink"), false);
+        graphics.drawString(this.font, Component.literal("Power: " + factionSize + " / " + factionSize), col1X, this.y + 18, FactionPalette.getBarColor("text_pink"), false);
         this.powerBar.render(graphics, col1X, this.y + 28, powerPercent);
 
         this.airshipsLabel.render(graphics, col1X, this.y + 44, 0.0F);
         this.airshipsBar.render(graphics, col1X, this.y + 54, shipsPercent);
 
-        // ==========================================
-        // --- COLUMN 2: RIGHT SIDE (STATISTICS & STORAGE)
-        // ==========================================
+        // --- COLUMN 2: RIGHT SIDE (STATISTICS & STORAGE) ---
         int col2X = this.x + 115;
 
         this.resourcesHeader.render(graphics, col2X, this.y + 6, 0.0F);
