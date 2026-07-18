@@ -7,31 +7,25 @@ import com.drultralux.townsteadfactions.client.screen.widget.GlobalFactionsWidge
 import com.drultralux.townsteadfactions.client.screen.widget.PlayerModelWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.ResourceDisplayWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.RosterDisplayWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.TabPanelWidget;
 import com.drultralux.townsteadfactions.config.ModConfig;
-import dev.marie.MariesLib.client.GuiValueRenderer;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * The main faction dashboard screen: a resizable, multi-tab window hosting
  * the treasury, roster, global factions, avatar, and activity log widgets.
- * Widget positions and window size are persisted to the client config.
+ * Tab structure and widget placement are owned entirely by
+ * {@link TabManager}; this screen only renders what it's given and
+ * forwards input events into {@code TabManager}'s methods.
  */
 public class FactionScreen extends Screen {
-
-    /** The tab panels making up this screen, in display order. */
-    private final List<FactionTabPanel> tabPanels = new ArrayList<>();
-
-    /** Internal identifiers for each tab, parallel to {@link #tabPanels}. */
-    private final List<String> tabInternalIds = new ArrayList<>();
-
-    /** The index of the currently selected tab. */
-    private int activeTabIndex = 0;
 
     /** The widget currently being dragged by the mouse, or {@code null} if none. */
     private DraggableWidget activeDraggedComponent = null;
@@ -66,17 +60,11 @@ public class FactionScreen extends Screen {
     /** The activity log widget instance. */
     private ActivityLogWidget activityWidget;
 
-    /**
-     * A shared bar-segment renderer passed to tab panels for drawing
-     * resource levels.
-     */
-    private final GuiValueRenderer segmentRenderer = (graphics, x, y, level) -> {
-        int filledBlocks = (int) (level * 10);
-        for (int i = 0; i < 10; i++) {
-            int color = (i < filledBlocks) ? 0xFF00FF00 : 0xFF2A2A2A;
-            graphics.fill(x + (i * 8), y, x + (i * 8) + 6, y + 6, color);
-        }
-    };
+    /** The active tab-rename text field, or {@code null} if no rename is in progress. */
+    private EditBox tabRenameBox = null;
+
+    /** The ID of the tab currently being renamed, or {@code null} if none. */
+    private String renamingTabId = null;
 
     /**
      * Creates the faction dashboard screen.
@@ -86,32 +74,31 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Builds the screen's tabs and widgets from the client configuration,
-     * falling back to defaults if no tab layout is configured.
+     * Loads the saved tab layout (or installs defaults, on first run or
+     * after a layout version bump), then creates and places this screen's
+     * widgets according to their saved tab assignments.
      */
     @Override
     protected void init() {
         super.init();
-        this.tabPanels.clear();
-        this.tabInternalIds.clear();
 
         this.boxWidth = ModConfig.CLIENT.getInteger("mainBoxWidth", 360);
         this.boxHeight = ModConfig.CLIENT.getInteger("mainBoxHeight", 220);
 
-        List<String> tabMappings = ModConfig.CLIENT.getStringList("customizedTabOrder");
-        for (String mapping : tabMappings) {
-            if (mapping == null || !mapping.contains(";")) continue;
-            String[] tokens = mapping.split(";");
-            if (tokens.length >= 2) {
-                this.tabInternalIds.add(tokens[0]);
-                this.tabPanels.add(new FactionTabPanel(Component.literal(tokens[1])));
-            }
+        int savedVersion = ModConfig.CLIENT.getInteger("savedLayoutVersion", 0);
+        boolean needsVersionReset = savedVersion < TabManager.CURRENT_LAYOUT_VERSION;
+
+        boolean loaded = false;
+        if (!needsVersionReset) {
+            List<String> tabMappings = ModConfig.CLIENT.getStringList("customizedTabOrder");
+            loaded = TabManager.loadFromEncoded(tabMappings);
         }
 
-        if (this.tabPanels.isEmpty()) {
-            this.tabInternalIds.add("OVERVIEW"); this.tabPanels.add(new FactionTabPanel(Component.literal("Overview")));
-            this.tabInternalIds.add("ROSTER"); this.tabPanels.add(new FactionTabPanel(Component.literal("Roster")));
-            this.tabInternalIds.add("GLOBAL"); this.tabPanels.add(new FactionTabPanel(Component.literal("Global")));
+        if (!loaded) {
+            ScreenLayoutSaver.resetToDefaults();
+            if (needsVersionReset) {
+                ScreenLayoutSaver.saveLayoutVersion(TabManager.CURRENT_LAYOUT_VERSION);
+            }
         }
 
         int mainX = this.width / 2 - (this.boxWidth / 2);
@@ -123,31 +110,29 @@ public class FactionScreen extends Screen {
         this.avatarWidget = new PlayerModelWidget(mainX + 20 + ModConfig.CLIENT.getInteger("avatarWidgetX", 20), mainY + 40 + ModConfig.CLIENT.getInteger("avatarWidgetY", -10));
         this.activityWidget = new ActivityLogWidget(mainX + 20 + ModConfig.CLIENT.getInteger("activityWidgetX", -40), mainY + 40 + ModConfig.CLIENT.getInteger("activityWidgetY", 90));
 
-        routeWidgetToTab(this.treasuryWidget, ModConfig.CLIENT.getInteger("treasuryWidgetTab", 0));
-        routeWidgetToTab(this.rosterWidget, ModConfig.CLIENT.getInteger("rosterWidgetTab", 1));
-        routeWidgetToTab(this.globalWidget, ModConfig.CLIENT.getInteger("globalWidgetTab", 2));
-        routeWidgetToTab(this.avatarWidget, ModConfig.CLIENT.getInteger("avatarWidgetTab", 0));
-        routeWidgetToTab(this.activityWidget, ModConfig.CLIENT.getInteger("activityWidgetTab", 0));
+        placeWidget(this.treasuryWidget, "treasuryWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
+        placeWidget(this.rosterWidget, "rosterWidgetTabId", TabManager.DEFAULT_TAB_ROSTER);
+        placeWidget(this.globalWidget, "globalWidgetTabId", TabManager.DEFAULT_TAB_GLOBAL);
+        placeWidget(this.avatarWidget, "avatarWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
+        placeWidget(this.activityWidget, "activityWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
     }
 
     /**
-     * Adds a widget to the tab at the given index, or to the first tab if
-     * the index is out of range.
+     * Places a widget onto its saved tab, reading the saved tab ID from
+     * config under the given key.
      *
-     * @param widget the widget to add
-     * @param preferredIndex the index of the tab to add it to
+     * @param widget the widget to place
+     * @param configKey the config key holding the widget's saved tab ID
+     * @param fallbackTabId the tab ID to use if no saved value exists
      */
-    private void routeWidgetToTab(DraggableWidget widget, int preferredIndex) {
-        if (preferredIndex >= 0 && preferredIndex < this.tabPanels.size()) {
-            this.tabPanels.get(preferredIndex).addWidget(widget);
-        } else {
-            this.tabPanels.get(0).addWidget(widget);
-        }
+    private void placeWidget(DraggableWidget widget, String configKey, String fallbackTabId) {
+        String tabId = ModConfig.CLIENT.getString(configKey, fallbackTabId);
+        TabManager.moveWidgetToTab(widget, tabId);
     }
 
     /**
      * Renders the dashboard background, window frame, resize handle, tab
-     * headers, and the active tab's widgets.
+     * headers, add-tab button, and the active tab's widgets.
      *
      * @param graphics the graphics context to draw with
      * @param mouseX the current mouse x position
@@ -170,20 +155,30 @@ public class FactionScreen extends Screen {
         int handleY = mainY + this.boxHeight - 8;
         graphics.fill(handleX, handleY, handleX + 6, handleY + 6, 0xFF666666);
 
-        renderTabHeaders(graphics, mainX, mainY);
+        TabManager.layoutHeaders(mainX, mainY, this.font);
+        String activeTabId = TabManager.getActiveTabId();
+        boolean closeable = TabManager.getTabs().size() > 1;
+        for (TabPanelWidget tab : TabManager.getTabs()) {
+            if (!tab.getId().equals(this.renamingTabId)) {
+                tab.renderHeader(graphics, this.font, tab.getId().equals(activeTabId), closeable);
+            }
+        }
+        TabManager.renderAddButton(graphics, this.font);
 
-        if (this.activeTabIndex >= 0 && this.activeTabIndex < this.tabPanels.size()) {
-            for (DraggableWidget widget : this.tabPanels.get(this.activeTabIndex).getComponents()) {
+        TabPanelWidget activeTab = TabManager.getActiveTab();
+        if (activeTab != null) {
+            for (DraggableWidget widget : activeTab.getComponents()) {
                 int minWX = mainX + 4;
                 if (widget.getX() < minWX) widget.setPosition(minWX, widget.getY());
                 if (widget.getX() + 140 > mainX + this.boxWidth) widget.setPosition(mainX + this.boxWidth - 144, widget.getY());
                 if (widget.getY() < mainY + 24) widget.setPosition(widget.getX(), mainY + 24);
                 if (widget.getY() + 70 > mainY + this.boxHeight) widget.setPosition(widget.getX(), mainY + this.boxHeight - 74);
             }
-            this.tabPanels.get(this.activeTabIndex).renderContents(graphics, mouseX, mouseY, partialTicks, this.segmentRenderer);
+            activeTab.renderContent(graphics, mouseX, mouseY, partialTicks);
         }
 
-        // Render our own widgets directly, bypassing the parent Screen's background/blur pass.
+        // Render our own widgets (including an active rename EditBox, if any) directly,
+        // bypassing the parent Screen's background/blur pass.
         for (Renderable renderable : this.renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTicks);
         }
@@ -204,32 +199,9 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Renders the row of tab header buttons across the top of the window.
-     *
-     * @param graphics the graphics context to draw with
-     * @param mainX the x position of the main window
-     * @param mainY the y position of the main window
-     */
-    private void renderTabHeaders(GuiGraphics graphics, int mainX, int mainY) {
-        int tabX = mainX + 20;
-        int tabY = mainY + 8;
-
-        for (int i = 0; i < this.tabPanels.size(); i++) {
-            FactionTabPanel panel = this.tabPanels.get(i);
-            int textW = this.font.width(panel.getTabTitle());
-            int tabColor = (i == this.activeTabIndex) ? 0xFFFFFFFF : 0xAAAAAA;
-
-            graphics.fill(tabX - 4, tabY - 2, tabX + textW + 4, tabY + 12, (i == this.activeTabIndex) ? 0xFF333333 : 0xFF222222);
-            graphics.renderOutline(tabX - 4, tabY - 2, textW + 8, 14, 0xFF555555);
-            graphics.drawString(this.font, panel.getTabTitle(), tabX, tabY + 1, tabColor, false);
-
-            tabX += textW + 24;
-        }
-    }
-
-    /**
-     * Handles mouse clicks for resizing the window, switching tabs, and
-     * beginning a widget drag.
+     * Handles mouse clicks for resizing the window, adding a new tab, tab
+     * header interaction (select or rename), and beginning a widget drag.
+     * A click outside an active rename box commits that rename first.
      *
      * @param mouseX the mouse x position
      * @param mouseY the mouse y position
@@ -238,6 +210,10 @@ public class FactionScreen extends Screen {
      */
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        if (button == 0 && this.tabRenameBox != null && !this.tabRenameBox.isMouseOver(mouseX, mouseY)) {
+            commitRename();
+        }
+
         if (button == 0) {
             int mainX = this.width / 2 - (this.boxWidth / 2);
             int mainY = this.height / 2 - (this.boxHeight / 2);
@@ -249,19 +225,30 @@ public class FactionScreen extends Screen {
                 return true;
             }
 
-            int tabX = mainX + 20;
-            int tabY = mainY + 8;
-            for (int i = 0; i < this.tabPanels.size(); i++) {
-                int textW = this.font.width(this.tabPanels.get(i).getTabTitle());
-                if (mouseX >= tabX - 4 && mouseX <= tabX + textW + 4 && mouseY >= tabY - 2 && mouseY <= tabY + 12) {
-                    this.activeTabIndex = i;
-                    return true;
-                }
-                tabX += textW + 24;
+            if (TabManager.isAddButtonHovered(mouseX, mouseY)) {
+                String newTabId = TabManager.addTab("New Tab");
+                TabManager.setActiveTab(newTabId);
+                beginRenameTab(newTabId);
+                return true;
             }
 
-            if (this.activeTabIndex >= 0 && this.activeTabIndex < this.tabPanels.size()) {
-                for (DraggableWidget widget : this.tabPanels.get(this.activeTabIndex).getComponents()) {
+            TabManager.HeaderClickOutcome headerClick = TabManager.handleHeaderClick(mouseX, mouseY);
+            if (headerClick.consumed()) {
+                if (headerClick.renameRequestedTabId() != null) {
+                    beginRenameTab(headerClick.renameRequestedTabId());
+                } else if (headerClick.closeRequestedTabId() != null) {
+                    if (headerClick.closeRequestedTabId().equals(this.renamingTabId)) {
+                        cancelRename();
+                    }
+                    TabManager.removeTab(headerClick.closeRequestedTabId());
+                    flushPlacementsToConfig();
+                }
+                return true;
+            }
+
+            TabPanelWidget activeTab = TabManager.getActiveTab();
+            if (activeTab != null) {
+                for (DraggableWidget widget : activeTab.getComponents()) {
                     if (widget.mouseClicked(mouseX, mouseY, button)) {
                         this.activeDraggedComponent = widget;
                         return true;
@@ -295,23 +282,12 @@ public class FactionScreen extends Screen {
         if (this.activeDraggedComponent != null) {
             this.activeDraggedComponent.mouseDragged(mouseX, mouseY, button, dragX, dragY);
 
-            int mainX = this.width / 2 - (this.boxWidth / 2);
-            int mainY = this.height / 2 - (this.boxHeight / 2);
-            int tabX = mainX + 20;
-            int tabY = mainY + 8;
-
-            for (int i = 0; i < this.tabPanels.size(); i++) {
-                FactionTabPanel panel = this.tabPanels.get(i);
-                int textW = this.font.width(panel.getTabTitle());
-                if (mouseX >= tabX - 4 && mouseX <= tabX + textW + 4 && mouseY >= tabY - 2 && mouseY <= tabY + 12) {
-                    if (this.activeTabIndex != i) {
-                        this.tabPanels.get(this.activeTabIndex).removeWidget(this.activeDraggedComponent);
-                        panel.addWidget(this.activeDraggedComponent);
-                        this.activeTabIndex = i;
-                        break;
-                    }
+            for (TabPanelWidget tab : TabManager.getTabs()) {
+                if (tab.isHeaderHovered(mouseX, mouseY) && !tab.getId().equals(TabManager.getActiveTabId())) {
+                    TabManager.moveWidgetToTab(this.activeDraggedComponent, tab.getId());
+                    TabManager.setActiveTab(tab.getId());
+                    break;
                 }
-                tabX += textW + 24;
             }
             return true;
         }
@@ -339,7 +315,9 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Closes the dashboard when the dashboard hotkey or Escape is pressed.
+     * While renaming a tab, commits on Enter and cancels on Escape,
+     * forwarding all other keys to the rename text field. Otherwise,
+     * closes the dashboard when the dashboard hotkey or Escape is pressed.
      *
      * @param keyCode the key code pressed
      * @param scanCode the platform-specific scan code
@@ -348,7 +326,19 @@ public class FactionScreen extends Screen {
      */
     @Override
     public boolean keyPressed(int keyCode, int scanCode, int modifiers) {
-        if (KeyMappings.OPEN_FACTION_DASHBOARD.matches(keyCode, scanCode) || keyCode == 256) {
+        if (this.tabRenameBox != null) {
+            if (keyCode == GLFW.GLFW_KEY_ENTER || keyCode == GLFW.GLFW_KEY_KP_ENTER) {
+                commitRename();
+                return true;
+            }
+            if (keyCode == GLFW.GLFW_KEY_ESCAPE) {
+                cancelRename();
+                return true;
+            }
+            return super.keyPressed(keyCode, scanCode, modifiers);
+        }
+
+        if (KeyMappings.OPEN_FACTION_DASHBOARD.matches(keyCode, scanCode) || keyCode == GLFW.GLFW_KEY_ESCAPE) {
             this.onClose();
             return true;
         }
@@ -365,42 +355,95 @@ public class FactionScreen extends Screen {
     }
 
     /**
+     * Opens a rename text field over the given tab's header, pre-filled
+     * with its current title. Commits any rename already in progress
+     * first.
+     *
+     * @param tabId the ID of the tab to rename
+     */
+    private void beginRenameTab(String tabId) {
+        TabPanelWidget tab = TabManager.findTab(tabId);
+        if (tab == null) return;
+
+        if (this.tabRenameBox != null) {
+            commitRename();
+        }
+
+        int boxWidth = Math.max(tab.getHeaderWidth() + 8, 80);
+        EditBox box = new EditBox(this.font, tab.getHeaderX() - 4, tab.getHeaderY() - 2, boxWidth, 14, Component.literal("Tab name"));
+        box.setMaxLength(24);
+        box.setValue(tab.getTitle());
+        box.setFocused(true);
+
+        this.tabRenameBox = this.addRenderableWidget(box);
+        this.renamingTabId = tabId;
+        this.setFocused(this.tabRenameBox);
+    }
+
+    /**
+     * Applies the rename box's current text to the tab being renamed,
+     * closes the rename box, and persists the change.
+     */
+    private void commitRename() {
+        if (this.tabRenameBox == null) return;
+        TabManager.renameTab(this.renamingTabId, this.tabRenameBox.getValue());
+        endRename();
+        flushPlacementsToConfig();
+    }
+
+    /**
+     * Closes the rename box without applying any change.
+     */
+    private void cancelRename() {
+        endRename();
+    }
+
+    /**
+     * Removes the active rename box and clears rename state, if any.
+     */
+    private void endRename() {
+        if (this.tabRenameBox != null) {
+            this.removeWidget(this.tabRenameBox);
+            this.tabRenameBox = null;
+            this.renamingTabId = null;
+        }
+    }
+
+    /**
      * Converts each widget's absolute position to a position relative to
-     * the window, and its current tab, then saves them all to the client
-     * config.
+     * the window, resolves each widget's current tab, and saves the full
+     * layout (widget positions/tabs, window size, and tab list) to the
+     * client config.
      */
     private void flushPlacementsToConfig() {
         int mainX = this.width / 2 - (this.boxWidth / 2);
         int mainY = this.height / 2 - (this.boxHeight / 2);
 
-        int tTab = findWidgetTabLocation(this.treasuryWidget);
-        int rTab = findWidgetTabLocation(this.rosterWidget);
-        int gTab = findWidgetTabLocation(this.globalWidget);
-        int aTab = findWidgetTabLocation(this.avatarWidget);
-        int logTab = findWidgetTabLocation(this.activityWidget);
-
-        ScreenLayoutSaver.saveWidgetLayout(
-                this.treasuryWidget.getX() - mainX - 20, this.treasuryWidget.getY() - mainY - 40, tTab,
-                this.rosterWidget.getX() - mainX - 20, this.rosterWidget.getY() - mainY - 40, rTab,
-                this.globalWidget.getX() - mainX - 20, this.globalWidget.getY() - mainY - 40, gTab,
-                this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, aTab,
-                this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, logTab,
-
-                this.boxWidth, this.boxHeight
+        ScreenLayoutSaver.saveFullLayout(
+                this.treasuryWidget.getX() - mainX - 20, this.treasuryWidget.getY() - mainY - 40, findWidgetTabId(this.treasuryWidget),
+                this.rosterWidget.getX() - mainX - 20, this.rosterWidget.getY() - mainY - 40, findWidgetTabId(this.rosterWidget),
+                this.globalWidget.getX() - mainX - 20, this.globalWidget.getY() - mainY - 40, findWidgetTabId(this.globalWidget),
+                this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, findWidgetTabId(this.avatarWidget),
+                this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, findWidgetTabId(this.activityWidget),
+                this.boxWidth, this.boxHeight,
+                TabManager.getTabs()
         );
     }
 
     /**
-     * Finds which tab currently contains the given widget.
+     * Finds the ID of the tab currently containing a widget.
      *
      * @param widget the widget to locate
-     * @return the index of the tab containing it, or {@code 0} if not found
+     * @return the containing tab's ID, or the first tab's ID if not found
      */
-    private int findWidgetTabLocation(DraggableWidget widget) {
-        for (int i = 0; i < this.tabPanels.size(); i++) {
-            if (this.tabPanels.get(i).getComponents().contains(widget)) return i;
+    private String findWidgetTabId(DraggableWidget widget) {
+        for (TabPanelWidget tab : TabManager.getTabs()) {
+            if (tab.getComponents().contains(widget)) {
+                return tab.getId();
+            }
         }
-        return 0;
+        List<TabPanelWidget> tabs = TabManager.getTabs();
+        return tabs.isEmpty() ? TabManager.DEFAULT_TAB_OVERVIEW : tabs.get(0).getId();
     }
 
     /**

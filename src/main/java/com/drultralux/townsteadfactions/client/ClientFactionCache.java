@@ -1,6 +1,8 @@
 package com.drultralux.townsteadfactions.client;
 
 import com.drultralux.townsteadfactions.utils.LogManager;
+import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
+import com.drultralux.townsteadfactions.config.ModConfig;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import java.util.HashMap;
@@ -53,6 +55,17 @@ public class ClientFactionCache {
                     cachedFactions.put(cleanId, parseFactionSnapshot(cleanId, factionsNbt.getCompound(id)));
                 }
             }
+        }
+
+        int serverResetVersion = nbt.getInt("serverLayoutResetVersion");
+        int lastAppliedResetVersion = ModConfig.CLIENT.getInteger("lastAppliedServerResetVersion", 0);
+        if (serverResetVersion > lastAppliedResetVersion) {
+            // Bundled into the regular sync payload (rather than a dedicated packet) since it's
+            // one int and only needs checking once per login — catches players who were offline
+            // when an admin triggered a global reset.
+            ScreenLayoutSaver.resetToDefaults();
+            ScreenLayoutSaver.saveLastAppliedServerResetVersion(serverResetVersion);
+            LogManager.debug("Applied server-triggered faction dashboard layout reset (version " + serverResetVersion + ").");
         }
 
         LogManager.debug("Client cache updated via full sync. Assigned Faction: {" + assignedFactionId + "}");

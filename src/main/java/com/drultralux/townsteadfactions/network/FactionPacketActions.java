@@ -17,4 +17,6 @@ public final class FactionPacketActions {
     public static final String FACTION_SYNC = "faction_sync";
     /** S2C: a single faction's updated state (id, resources, roster). */
     public static final String FACTION_SYNC_DELTA = "faction_sync_delta";
+    /** S2C: instructs the client to discard its saved dashboard layout and rebuild defaults next time it's opened. */
+    public static final String FACTION_LAYOUT_RESET = "faction_layout_reset";
 }

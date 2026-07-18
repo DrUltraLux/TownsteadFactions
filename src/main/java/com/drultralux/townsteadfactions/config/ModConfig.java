@@ -148,6 +148,20 @@ public class ModConfig {
         }
 
         /**
+         * Reads a string config value by key.
+         *
+         * @param key the config key to read
+         * @param fallback the value to return if the key is missing or not a string
+         * @return the config value, or {@code fallback}
+         */
+        public String getString(String key, String fallback) {
+            if (this.valuesRegistry.containsKey(key) && this.valuesRegistry.get(key).get() instanceof String stringValue) {
+                return stringValue;
+            }
+            return fallback;
+        }
+
+        /**
          * Reads a boolean config value by key.
          *
          * @param key the config key to read

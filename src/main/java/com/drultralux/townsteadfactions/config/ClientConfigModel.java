@@ -7,7 +7,7 @@ import java.util.Map;
 
 /**
  * Holds default configuration values for the client-side faction UI, such
- * as window size, widget positions, and tab ordering.
+ * as window size, widget positions, tab assignments, and tab ordering.
  */
 public class ClientConfigModel {
 
@@ -16,7 +16,7 @@ public class ClientConfigModel {
 
     /**
      * Creates the client configuration model and populates it with default
-     * window bounds, widget positions, and tab order.
+     * window bounds, widget positions, tab assignments, and tab order.
      */
     public ClientConfigModel() {
         // Main window bounds
@@ -24,32 +24,37 @@ public class ClientConfigModel {
         interfaceSettings.put("mainBoxHeight", 220);
         interfaceSettings.put("allowWindowDragging", true);
 
-        // Default positions and tab assignments for each draggable widget
+        // Layout reset tracking (see TabManager for how these are used)
+        interfaceSettings.put("savedLayoutVersion", 1);
+        interfaceSettings.put("lastAppliedServerResetVersion", 0);
+
+        // Default positions and tab assignments for each draggable widget.
+        // Tab IDs here match TabManager.DEFAULT_TAB_* constants.
         interfaceSettings.put("treasuryWidgetX", -50);
         interfaceSettings.put("treasuryWidgetY", -30);
-        interfaceSettings.put("treasuryWidgetTab", 0);
+        interfaceSettings.put("treasuryWidgetTabId", "overview");
 
         interfaceSettings.put("rosterWidgetX", 40);
         interfaceSettings.put("rosterWidgetY", -10);
-        interfaceSettings.put("rosterWidgetTab", 1);
+        interfaceSettings.put("rosterWidgetTabId", "roster");
 
         interfaceSettings.put("globalWidgetX", -100);
         interfaceSettings.put("globalWidgetY", 10);
-        interfaceSettings.put("globalWidgetTab", 2);
+        interfaceSettings.put("globalWidgetTabId", "global");
 
         interfaceSettings.put("avatarWidgetX", 26);
         interfaceSettings.put("avatarWidgetY", 40);
-        interfaceSettings.put("avatarWidgetTab", 0);
+        interfaceSettings.put("avatarWidgetTabId", "overview");
 
         interfaceSettings.put("activityWidgetX", 26);
         interfaceSettings.put("activityWidgetY", 90);
-        interfaceSettings.put("activityWidgetTab", 0);
+        interfaceSettings.put("activityWidgetTabId", "overview");
 
         // Default tab order, as "ID;Display Name" pairs
         List<String> defaultTabOrder = new ArrayList<>();
-        defaultTabOrder.add("OVERVIEW;Overview");
-        defaultTabOrder.add("ROSTER;Roster");
-        defaultTabOrder.add("GLOBAL;Global");
+        defaultTabOrder.add("overview;Overview");
+        defaultTabOrder.add("roster;Roster");
+        defaultTabOrder.add("global;Global");
 
         interfaceSettings.put("customizedTabOrder", defaultTabOrder);
     }

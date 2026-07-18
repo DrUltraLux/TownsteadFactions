@@ -6,6 +6,10 @@ import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.factions.FactionSavedData;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
+import com.drultralux.townsteadfactions.layout.LayoutResetManager;
+import com.drultralux.townsteadfactions.layout.LayoutResetSavedData;
+import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixTypes;
 import net.minecraft.world.level.saveddata.SavedData;
@@ -60,6 +64,16 @@ public class FactionServerEvents {
 
             FactionManager.setStorageInstance(savedData);
 
+            LayoutResetSavedData layoutResetData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            LayoutResetSavedData::new,
+                            LayoutResetSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_layoutreset"
+            );
+            LayoutResetManager.setStorageInstance(layoutResetData);
+
             if (savedData.rawLoadedTag != null && savedData.rawLoadedTag.contains("factions", 10)) {
                 LogManager.info("Persistent world records found. Initiating secure database recovery merge...");
                 FactionManager.getInstance().reconcileFactionsAndLoad(savedData.rawLoadedTag);
@@ -95,6 +109,9 @@ public class FactionServerEvents {
             LogManager.info("Player logged in: " + player.getName().getString() + ". Resolving faction parameters...");
             OriginManager.fetchInitialRootID(player);
             FactionPacketManager.sendFactionDataToClient(player);
+            if (LayoutResetManager.consumePendingReset(player.getUUID())) {
+                FactionPacketManager.sendToPlayer(player, FactionPacketActions.FACTION_LAYOUT_RESET, new CompoundTag());
+            }
         }
     }
 

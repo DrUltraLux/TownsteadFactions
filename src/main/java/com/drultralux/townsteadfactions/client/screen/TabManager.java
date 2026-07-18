@@ -1,0 +1,341 @@
+package com.drultralux.townsteadfactions.client.screen;
+
+import com.drultralux.townsteadfactions.client.screen.widget.DraggableWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.TabPanelWidget;
+import net.minecraft.client.gui.Font;
+import net.minecraft.client.gui.GuiGraphics;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
+/**
+ * The sole gateway for the faction dashboard's tab layout: which tabs
+ * exist, in what order, what widgets are assigned to each, and which tab
+ * is currently active. No other class should hold or mutate
+ * {@link TabPanelWidget} membership directly — everything goes through
+ * this class's methods, the same way faction data only goes through
+ * {@code FactionManager}.
+ */
+public final class TabManager {
+
+    /**
+     * The current layout schema version. Bump this when shipping a change
+     * that invalidates existing saved layouts — clients with an older
+     * saved version automatically reset to defaults on next open.
+     */
+    public static final int CURRENT_LAYOUT_VERSION = 1;
+
+    /** The stable ID of the default "Overview" tab. */
+    public static final String DEFAULT_TAB_OVERVIEW = "overview";
+
+    /** The stable ID of the default "Roster" tab. */
+    public static final String DEFAULT_TAB_ROSTER = "roster";
+
+    /** The stable ID of the default "Global" tab. */
+    public static final String DEFAULT_TAB_GLOBAL = "global";
+
+    /** The tabs currently making up the dashboard, in display order. */
+    private static final List<TabPanelWidget> tabs = new ArrayList<>();
+
+    /** The ID of the currently active tab, or {@code null} if there are no tabs. */
+    private static String activeTabId = null;
+
+    /** The fixed width/height of the "add tab" button. */
+    private static final int ADD_BUTTON_SIZE = 14;
+
+    /** The "add tab" button's current x position, assigned once per frame by the header layout pass. */
+    private static int addButtonX;
+
+    /** The "add tab" button's current y position, assigned once per frame by the header layout pass. */
+    private static int addButtonY;
+
+    private TabManager() {}
+
+    /**
+     * The outcome of a click against the tab header row.
+     *
+     * @param consumed whether the click landed on a header/button and
+     *                 should not be processed further by the caller
+     * @param renameRequestedTabId the ID of a tab whose rename was
+     *                              requested via double click, or
+     *                              {@code null} if none was requested
+     * @param closeRequestedTabId the ID of a tab whose removal was
+     *                             requested via its close button, or
+     *                             {@code null} if none was requested
+     */
+    public record HeaderClickOutcome(boolean consumed, String renameRequestedTabId, String closeRequestedTabId) {}
+
+    /**
+     * Creates a new, empty tab with a freshly generated stable ID and adds
+     * it to the end of the tab list. If this is the first tab created, it
+     * becomes the active tab.
+     *
+     * @param title the new tab's display name
+     * @return the new tab's generated ID
+     */
+    public static String addTab(String title) {
+        String id = "tab_" + UUID.randomUUID().toString().substring(0, 8);
+        tabs.add(new TabPanelWidget(id, title));
+        if (activeTabId == null) {
+            activeTabId = id;
+        }
+        return id;
+    }
+
+    /**
+     * Removes a tab, moving any widgets it contained onto the first
+     * remaining tab. Refuses to remove the last tab, since the dashboard
+     * always needs at least one.
+     *
+     * @param tabId the ID of the tab to remove
+     * @return {@code true} if the tab was removed
+     */
+    public static boolean removeTab(String tabId) {
+        TabPanelWidget target = findTab(tabId);
+        if (target == null || tabs.size() <= 1) return false;
+
+        TabPanelWidget fallback = (tabs.get(0) == target) ? tabs.get(1) : tabs.get(0);
+        for (DraggableWidget widget : new ArrayList<>(target.getComponents())) {
+            target.removeWidget(widget);
+            fallback.addWidget(widget);
+        }
+
+        tabs.remove(target);
+        if (tabId.equals(activeTabId)) {
+            activeTabId = fallback.getId();
+        }
+        return true;
+    }
+
+    /**
+     * Renames a tab.
+     *
+     * @param tabId the ID of the tab to rename
+     * @param newTitle the new title; ignored if blank
+     */
+    public static void renameTab(String tabId, String newTitle) {
+        TabPanelWidget tab = findTab(tabId);
+        if (tab != null) {
+            tab.setTitle(newTitle);
+        }
+    }
+
+    /**
+     * Moves a tab to a new position in the display order.
+     *
+     * @param tabId the ID of the tab to move
+     * @param newIndex the target index; clamped to the valid range
+     */
+    public static void reorderTab(String tabId, int newIndex) {
+        TabPanelWidget tab = findTab(tabId);
+        if (tab == null) return;
+
+        int clampedIndex = Math.max(0, Math.min(newIndex, tabs.size() - 1));
+        tabs.remove(tab);
+        tabs.add(clampedIndex, tab);
+    }
+
+    /**
+     * Moves a widget onto a tab, removing it from whichever tab (if any)
+     * currently holds it first.
+     *
+     * @param widget the widget to move
+     * @param tabId the ID of the destination tab
+     */
+    public static void moveWidgetToTab(DraggableWidget widget, String tabId) {
+        if (widget == null || tabs.isEmpty()) return;
+        TabPanelWidget target = findTab(tabId);
+        if (target == null) {
+            target = tabs.get(0);
+        }
+
+        for (TabPanelWidget tab : tabs) {
+            tab.removeWidget(widget);
+        }
+        target.addWidget(widget);
+    }
+
+    /**
+     * Returns the live list of tabs, in display order, for rendering and
+     * hit-testing. Callers should not add, remove, or reorder entries in
+     * the returned list directly — use this class's methods instead.
+     *
+     * @return the current tabs
+     */
+    public static List<TabPanelWidget> getTabs() {
+        return tabs;
+    }
+
+    /**
+     * Finds a tab by ID.
+     *
+     * @param tabId the tab ID to look up
+     * @return the matching tab, or {@code null} if none exists
+     */
+    public static TabPanelWidget findTab(String tabId) {
+        for (TabPanelWidget tab : tabs) {
+            if (tab.getId().equals(tabId)) {
+                return tab;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the ID of the currently active tab.
+     *
+     * @return the active tab's ID, or {@code null} if there are no tabs
+     */
+    public static String getActiveTabId() {
+        return activeTabId;
+    }
+
+    /**
+     * Returns the currently active tab.
+     *
+     * @return the active tab, or {@code null} if there are no tabs
+     */
+    public static TabPanelWidget getActiveTab() {
+        return findTab(activeTabId);
+    }
+
+    /**
+     * Sets the active tab.
+     *
+     * @param tabId the ID of the tab to activate; ignored if unknown
+     */
+    public static void setActiveTab(String tabId) {
+        if (findTab(tabId) != null) {
+            activeTabId = tabId;
+        }
+    }
+
+    /**
+     * Computes and assigns each tab header's on-screen position, left to
+     * right starting at the given origin, followed by the "add tab"
+     * button. Must be called once per frame, before rendering or
+     * hit-testing any tab header or the add button, so all three stay
+     * consistent with each other.
+     *
+     * @param mainX the x position of the dashboard window
+     * @param mainY the y position of the dashboard window
+     * @param font the font headers will be measured and drawn with
+     */
+    public static void layoutHeaders(int mainX, int mainY, Font font) {
+        int tabX = mainX + 20;
+        int tabY = mainY + 8;
+        for (TabPanelWidget tab : tabs) {
+            int textWidth = font.width(tab.getTitle());
+            tab.setHeaderBounds(tabX, tabY, textWidth);
+            tabX += tab.getTotalHeaderWidth() + 16;
+        }
+        addButtonX = tabX;
+        addButtonY = tabY;
+    }
+
+    /**
+     * Renders the "add tab" button at its current layout position.
+     *
+     * @param graphics the graphics context to draw with
+     * @param font the font to draw the button label with
+     */
+    public static void renderAddButton(GuiGraphics graphics, Font font) {
+        graphics.fill(addButtonX, addButtonY - 2, addButtonX + ADD_BUTTON_SIZE, addButtonY + 12, 0xFF222222);
+        graphics.renderOutline(addButtonX, addButtonY - 2, ADD_BUTTON_SIZE, 14, 0xFF555555);
+        graphics.drawString(font, "+", addButtonX + 4, addButtonY + 1, 0xFFAAAAAA, false);
+    }
+
+    /**
+     * Checks whether the given point falls within the "add tab" button's
+     * bounds.
+     *
+     * @param mouseX the x position to check
+     * @param mouseY the y position to check
+     * @return {@code true} if the point is within the add button
+     */
+    public static boolean isAddButtonHovered(double mouseX, double mouseY) {
+        return mouseX >= addButtonX && mouseX <= addButtonX + ADD_BUTTON_SIZE &&
+                mouseY >= addButtonY - 2 && mouseY <= addButtonY + 12;
+    }
+
+    /**
+     * Checks a click against every tab's header bounds (which must already
+     * be up to date via {@link #layoutHeaders}), applying tab selection
+     * directly and reporting rename requests back to the caller.
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @return the outcome of the click
+     */
+    public static HeaderClickOutcome handleHeaderClick(double mouseX, double mouseY) {
+        boolean closeable = tabs.size() > 1;
+        for (TabPanelWidget tab : tabs) {
+            switch (tab.mouseClicked(mouseX, mouseY, closeable)) {
+                case SELECTED -> {
+                    setActiveTab(tab.getId());
+                    return new HeaderClickOutcome(true, null, null);
+                }
+                case RENAME_REQUESTED -> {
+                    return new HeaderClickOutcome(true, tab.getId(), null);
+                }
+                case CLOSE_REQUESTED -> {
+                    return new HeaderClickOutcome(true, null, tab.getId());
+                }
+                case NONE -> { /* keep checking the remaining tabs */ }
+            }
+        }
+        return new HeaderClickOutcome(false, null, null);
+    }
+
+    /**
+     * Clears all tabs and installs the three default tabs (Overview,
+     * Roster, Global), with Overview active. Does not create or place any
+     * widgets — the caller is responsible for placing default widgets
+     * using {@link #DEFAULT_TAB_OVERVIEW}, {@link #DEFAULT_TAB_ROSTER},
+     * and {@link #DEFAULT_TAB_GLOBAL}.
+     */
+    public static void installDefaultLayout() {
+        tabs.clear();
+        tabs.add(new TabPanelWidget(DEFAULT_TAB_OVERVIEW, "Overview"));
+        tabs.add(new TabPanelWidget(DEFAULT_TAB_ROSTER, "Roster"));
+        tabs.add(new TabPanelWidget(DEFAULT_TAB_GLOBAL, "Global"));
+        activeTabId = DEFAULT_TAB_OVERVIEW;
+    }
+
+    /**
+     * Rebuilds the tab list from previously saved entries, each formatted
+     * as {@code "id;title"}, preserving each tab's saved ID rather than
+     * generating new ones. Used when loading a saved layout from config.
+     *
+     * @param encodedTabs the saved tab entries
+     * @return {@code true} if at least one tab was successfully loaded
+     */
+    public static boolean loadFromEncoded(List<String> encodedTabs) {
+        tabs.clear();
+        for (String entry : encodedTabs) {
+            if (entry == null || !entry.contains(";")) continue;
+            String[] tokens = entry.split(";", 2);
+            if (tokens.length >= 2 && !tokens[0].trim().isEmpty()) {
+                tabs.add(new TabPanelWidget(tokens[0].trim(), tokens[1].trim()));
+            }
+        }
+        if (!tabs.isEmpty()) {
+            activeTabId = tabs.get(0).getId();
+        }
+        return !tabs.isEmpty();
+    }
+
+    /**
+     * Resets the dashboard to its default tab layout, discarding all
+     * current tabs and widget placements. Used by the layout-version and
+     * admin-triggered reset mechanisms.
+     *
+     * <p>Note: this only resets tab structure. The caller is responsible
+     * for re-placing the dashboard's widget instances onto the resulting
+     * default tabs afterward.</p>
+     */
+    public static void forceResetToDefaults() {
+        installDefaultLayout();
+    }
+}

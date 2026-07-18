@@ -4,6 +4,12 @@ import com.aetherianartificer.townstead.root.PlayerRoot;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
+import com.drultralux.townsteadfactions.layout.LayoutResetManager;
+import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import com.mojang.authlib.GameProfile;
+import net.minecraft.commands.arguments.GameProfileArgument;
+import net.minecraft.nbt.CompoundTag;
+import java.util.Collection;
 import com.mojang.brigadier.CommandDispatcher;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
@@ -38,8 +44,19 @@ public class FactionCommands {
         var updateNode = Commands.literal("update")
                 .executes(context -> executeUpdate(context.getSource()));
 
-        factionsRoot.then(displayNode).then(updateNode);
-        shortRoot.then(displayNode).then(updateNode);
+        var resetLayoutNode = Commands.literal("resetlayout")
+                .executes(context -> executeResetLayoutSelf(context.getSource()))
+                .then(Commands.literal("all")
+                        .requires(source -> source.hasPermission(2))
+                        .executes(context -> executeResetLayoutAll(context.getSource()))
+                )
+                .then(Commands.argument("player", GameProfileArgument.gameProfile())
+                        .requires(source -> source.hasPermission(2))
+                        .executes(context -> executeResetLayoutPlayer(context.getSource(), GameProfileArgument.getGameProfiles(context, "player")))
+                );
+
+        factionsRoot.then(resetLayoutNode);
+        shortRoot.then(resetLayoutNode);
 
         // --- ADMIN BRANCH (OP permission level 2) ---
 
@@ -235,6 +252,69 @@ public class FactionCommands {
         String globalListOutput = FactionManager.buildGlobalFactionListString();
 
         source.sendSuccess(() -> Component.literal(globalListOutput), true);
+        return 1;
+    }
+
+    /**
+     * Handles {@code /factions resetlayout}: queues a dashboard layout
+     * reset for the executing player, delivered immediately since they're
+     * online by definition.
+     *
+     * @param source the command source
+     * @return {@code 1} on success, {@code 0} if not run by a player
+     */
+    private static int executeResetLayoutSelf(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            FactionPacketManager.sendToPlayer(player, FactionPacketActions.FACTION_LAYOUT_RESET, new CompoundTag());
+            source.sendSuccess(() -> Component.literal("§aYour faction dashboard layout will reset to defaults next time you open it."), false);
+            return 1;
+        } catch (Exception e) {
+            source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
+            return 0;
+        }
+    }
+
+    /**
+     * Handles {@code /factions resetlayout <player>}: resets the named
+     * player's dashboard layout, sent immediately if they're online, or
+     * queued for their next login if not.
+     *
+     * @param source the command source
+     * @param profiles the resolved target profile(s)
+     * @return always {@code 1}
+     */
+    private static int executeResetLayoutPlayer(CommandSourceStack source, Collection<GameProfile> profiles) {
+        int affected = 0;
+        for (GameProfile profile : profiles) {
+            UUID targetUUID = profile.getId();
+            ServerPlayer online = source.getServer().getPlayerList().getPlayer(targetUUID);
+            if (online != null) {
+                FactionPacketManager.sendToPlayer(online, FactionPacketActions.FACTION_LAYOUT_RESET, new CompoundTag());
+            } else {
+                LayoutResetManager.markPlayerPendingReset(targetUUID);
+            }
+            affected++;
+        }
+        final int count = affected;
+        source.sendSuccess(() -> Component.literal("§a[Admin] Queued a layout reset for " + count + " player(s)."), true);
+        return 1;
+    }
+
+    /**
+     * Handles {@code /factions resetlayout all}: triggers a global
+     * dashboard layout reset, sent immediately to every online player and
+     * automatically applied to everyone else the next time they log in.
+     *
+     * @param source the command source
+     * @return always {@code 1}
+     */
+    private static int executeResetLayoutAll(CommandSourceStack source) {
+        LayoutResetManager.triggerGlobalReset();
+        for (ServerPlayer online : source.getServer().getPlayerList().getPlayers()) {
+            FactionPacketManager.sendToPlayer(online, FactionPacketActions.FACTION_LAYOUT_RESET, new CompoundTag());
+        }
+        source.sendSuccess(() -> Component.literal("§a[Admin] Triggered a global faction dashboard layout reset for all players."), true);
         return 1;
     }
 

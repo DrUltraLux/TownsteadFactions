@@ -1,6 +1,7 @@
 package com.drultralux.townsteadfactions;
 
 import com.drultralux.townsteadfactions.client.ClientFactionCache;
+import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
 import com.drultralux.townsteadfactions.events.ClientModEvents;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.events.FactionServerEvents;
@@ -78,6 +79,7 @@ public class TownsteadFactions {
             NeoForge.EVENT_BUS.register(ClientModEvents.ClientGameBusEvents.class);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC, ClientFactionCache::readSyncStream);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC_DELTA, ClientFactionCache::applyDelta);
+            FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_LAYOUT_RESET, data -> ScreenLayoutSaver.resetToDefaults());
         }
 
         LogManager.info("Launchpad constructor sequence complete. Processing context transferred.");

@@ -2,6 +2,7 @@ package com.drultralux.townsteadfactions.network;
 
 import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
+import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
@@ -49,6 +50,7 @@ public class FactionPacketManager {
         nbt.putInt("cogs", FactionManager.getPlayerFactionAsset(playerUUID, "cogs"));
         nbt.putInt("food", FactionManager.getPlayerFactionAsset(playerUUID, "food"));
         nbt.putInt("mana", FactionManager.getPlayerFactionAsset(playerUUID, "mana"));
+        nbt.putInt("serverLayoutResetVersion", LayoutResetManager.getGlobalResetVersion());
 
         CompoundTag factionsTag = new CompoundTag();
         for (String id : FactionManager.getActiveFactionIds()) {
