@@ -5,6 +5,7 @@ import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.factions.TitleManager;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
+import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import net.conczin.mca.entity.VillagerEntityMCA;
 import net.conczin.mca.server.world.data.Village;
@@ -107,8 +108,17 @@ public class VillageCensusTicker {
             String rootDisplayName = OriginManager.getCleanName(rootId);
             String title = TitleManager.getResolvedVillagerTitle(villager);
 
+            VillagerFactionSavedData.VillagerRecord previousRecord = VillagerFactionRegistry.getRecord(villagerUUID);
             VillagerFactionRegistry.assignVillager(villagerUUID,
                     new VillagerFactionSavedData.VillagerRecord(factionId, displayName, rootDisplayName, title));
+
+            if (previousRecord == null) {
+                FactionManager.logFactionAction(factionId, displayName + " was registered as a villager of this faction.");
+            } else if (!previousRecord.factionId().equals(factionId)) {
+                FactionManager.logFactionAction(factionId, displayName + " joined as a villager (formerly of " + previousRecord.factionId() + ").");
+                FactionManager.logFactionAction(previousRecord.factionId(), displayName + " left to join " + factionId + ".");
+            }
+
             populationByFaction.merge(factionId, 1, Integer::sum);
         }
 

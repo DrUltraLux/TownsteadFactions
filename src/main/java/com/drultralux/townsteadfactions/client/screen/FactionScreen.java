@@ -19,13 +19,44 @@ import org.lwjgl.glfw.GLFW;
 import java.util.List;
 
 /**
- * The main faction dashboard screen: a resizable, multi-tab window hosting
- * the treasury, roster, global factions, avatar, and activity log widgets.
- * Tab structure and widget placement are owned entirely by
- * {@link TabManager}; this screen only renders what it's given and
- * forwards input events into {@code TabManager}'s methods.
+ * The main faction dashboard screen: a resizable, draggable, multi-tab,
+ * vertically-scrollable window hosting the treasury, roster, global
+ * factions, avatar, and activity log widgets. Tab structure and widget
+ * placement are owned entirely by {@link TabManager}; this screen only
+ * renders what it's given and forwards input events into
+ * {@code TabManager}'s methods.
  */
 public class FactionScreen extends Screen {
+
+    /**
+     * Identifies which corner, if any, is currently being dragged to
+     * resize the window. Each corner keeps the opposite corner fixed in
+     * place while resizing — {@code BOTTOM_RIGHT} keeps the top-left
+     * corner fixed and grows right/down; {@code BOTTOM_LEFT} keeps the
+     * top-right corner fixed and grows left/down. Neither corner ever
+     * moves the window's top edge.
+     */
+    private enum ResizeCorner { NONE, BOTTOM_LEFT, BOTTOM_RIGHT }
+
+    /**
+     * The minimum window width for the resize currently in progress,
+     * captured once when the resize begins (from
+     * {@link TabManager#getGlobalMinimumWidth}) and held fixed for the
+     * duration of that drag, rather than being recomputed every frame.
+     */
+    private int resizeMinWidth = 200;
+
+    /** Fixed minimum window height, in pixels. */
+    private static final int MIN_BOX_HEIGHT = 160;
+
+    /** The size, in pixels, of each corner's resize-handle click zone. */
+    private static final int RESIZE_HANDLE_SIZE = 10;
+
+    /** The width, in pixels, of the vertical scrollbar track. */
+    private static final int SCROLLBAR_WIDTH = 6;
+
+    /** The minimum height, in pixels, the scrollbar thumb is ever drawn at, so it stays grabbable even with a lot of content. */
+    private static final int SCROLLBAR_MIN_THUMB_HEIGHT = 12;
 
     /** The widget currently being dragged by the mouse, or {@code null} if none. */
     private DraggableWidget activeDraggedComponent = null;
@@ -36,14 +67,87 @@ public class FactionScreen extends Screen {
     /** The current height of the main dashboard window, in pixels. */
     private int boxHeight;
 
-    /** Whether the window's resize handle is currently being dragged. */
-    private boolean isResizingBox = false;
+    /**
+     * The window's horizontal offset, in pixels, from its default
+     * centered position on screen. Zero means centered; positive moves
+     * right, negative moves left. Updated by dragging the window and
+     * persisted to config.
+     */
+    private int windowOffsetX = 0;
 
-    /** The mouse x offset captured when a resize drag begins. */
+    /**
+     * The window's vertical offset, in pixels, from its default centered
+     * position on screen. Zero means centered; positive moves down,
+     * negative moves up. Updated by dragging the window and persisted to
+     * config.
+     */
+    private int windowOffsetY = 0;
+
+    /** Which corner, if any, is currently being dragged to resize the window. */
+    private ResizeCorner activeResizeCorner = ResizeCorner.NONE;
+
+    /** The mouse x offset captured when a bottom-right resize begins (mouseX minus boxWidth at that moment). */
     private int resizeOffsetX;
 
-    /** The mouse y offset captured when a resize drag begins. */
+    /** The mouse y offset captured when a resize begins (mouseY minus boxHeight at that moment); used by both resize corners, since height always grows downward from the fixed top edge regardless of which corner is dragged. */
     private int resizeOffsetY;
+
+    /**
+     * The window's fixed right edge (in absolute screen pixels), captured
+     * when a bottom-left resize begins. A bottom-left resize keeps this
+     * edge constant and grows the window leftward from it.
+     */
+    private int resizeFixedRightEdge;
+
+    /**
+     * The window's fixed left edge (in absolute screen pixels), captured
+     * when a bottom-right resize begins. Needed because
+     * {@link #getMainX()}'s centered-position formula has {@code boxWidth}
+     * baked into it — so without this, the left edge would silently drift
+     * every time {@code boxWidth} changes, even though nothing here ever
+     * touches {@code windowOffsetX} directly during that resize.
+     */
+    private int resizeFixedLeftEdge;
+
+    /**
+     * The window's fixed top edge (in absolute screen pixels), captured
+     * when any resize begins. Both resize corners keep the top edge
+     * fixed and only grow downward — but {@link #getMainY()}'s centered
+     * formula has {@code boxHeight} baked into it the same way
+     * {@link #resizeFixedLeftEdge} addresses for width, so this must be
+     * explicitly re-applied every drag tick too, for both corners.
+     */
+    private int resizeFixedTopEdge;
+
+    /** Whether the window itself (its empty background, not a widget or control) is currently being dragged to move it. */
+    private boolean isDraggingWindow = false;
+
+    /** The mouse x position captured when a window drag begins. */
+    private double windowDragStartMouseX;
+
+    /** The mouse y position captured when a window drag begins. */
+    private double windowDragStartMouseY;
+
+    /** The window's {@link #windowOffsetX} captured when a window drag begins. */
+    private int windowDragStartOffsetX;
+
+    /** The window's {@link #windowOffsetY} captured when a window drag begins. */
+    private int windowDragStartOffsetY;
+
+    /** The {@link #windowOffsetX} value last applied to every widget's position during the current window drag. */
+    private int windowDragLastAppliedOffsetX;
+
+    /** The {@link #windowOffsetY} value last applied to every widget's position during the current window drag. */
+    private int windowDragLastAppliedOffsetY;
+
+    /** Whether the vertical scrollbar's thumb is currently being dragged. */
+    private boolean isDraggingScrollbar = false;
+
+    /** The mouse y position captured when a scrollbar drag begins. */
+    private double scrollbarDragStartMouseY;
+
+    /** The active tab's scroll offset captured when a scrollbar drag begins. */
+    private int scrollbarDragStartOffset;
 
     /** The treasury/resources widget instance. */
     private ResourceDisplayWidget treasuryWidget;
@@ -84,6 +188,8 @@ public class FactionScreen extends Screen {
 
         this.boxWidth = ModConfig.CLIENT.getInteger("mainBoxWidth", 360);
         this.boxHeight = ModConfig.CLIENT.getInteger("mainBoxHeight", 220);
+        this.windowOffsetX = ModConfig.CLIENT.getInteger("mainBoxOffsetX", 0);
+        this.windowOffsetY = ModConfig.CLIENT.getInteger("mainBoxOffsetY", 0);
 
         int savedVersion = ModConfig.CLIENT.getInteger("savedLayoutVersion", 0);
         boolean needsVersionReset = savedVersion < TabManager.CURRENT_LAYOUT_VERSION;
@@ -101,8 +207,8 @@ public class FactionScreen extends Screen {
             }
         }
 
-        int mainX = this.width / 2 - (this.boxWidth / 2);
-        int mainY = this.height / 2 - (this.boxHeight / 2);
+        int mainX = getMainX();
+        int mainY = getMainY();
 
         this.treasuryWidget = new ResourceDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("treasuryWidgetX", -50), mainY + 40 + ModConfig.CLIENT.getInteger("treasuryWidgetY", -30));
         this.rosterWidget = new RosterDisplayWidget(mainX + 20 + ModConfig.CLIENT.getInteger("rosterWidgetX", 40), mainY + 40 + ModConfig.CLIENT.getInteger("rosterWidgetY", -10));
@@ -131,8 +237,94 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Renders the dashboard background, window frame, resize handle, tab
-     * headers, add-tab button, and the active tab's widgets.
+     * Computes the window's current absolute x position on screen: its
+     * default centered position, plus any drag offset.
+     *
+     * @return the window's left edge x position, in absolute screen pixels
+     */
+    private int getMainX() {
+        return this.width / 2 - (this.boxWidth / 2) + this.windowOffsetX;
+    }
+
+    /**
+     * Computes the window's current absolute y position on screen: its
+     * default centered position, plus any drag offset.
+     *
+     * @return the window's top edge y position, in absolute screen pixels
+     */
+    private int getMainY() {
+        return this.height / 2 - (this.boxHeight / 2) + this.windowOffsetY;
+    }
+
+    /**
+     * Computes the top edge of the scrollable content area (below the tab
+     * headers), for the window's current position.
+     *
+     * @param mainY the window's current top edge y position
+     * @return the content area's top edge y position
+     */
+    private int getContentTop(int mainY) {
+        return mainY + 24;
+    }
+
+    /**
+     * Computes the bottom edge of the scrollable content area, for the
+     * window's current position and size.
+     *
+     * @param mainY the window's current top edge y position
+     * @return the content area's bottom edge y position
+     */
+    private int getContentBottom(int mainY) {
+        return mainY + this.boxHeight - 4;
+    }
+
+    /**
+     * Computes the right edge of the scrollable content area, reserving
+     * space for the vertical scrollbar so widgets never sit underneath
+     * it.
+     *
+     * @param mainX the window's current left edge x position
+     * @return the content area's right edge x position
+     */
+    private int getContentRight(int mainX) {
+        return mainX + this.boxWidth - 4 - SCROLLBAR_WIDTH;
+    }
+
+    /**
+     * Computes how far a tab's content currently extends below the
+     * content area's top edge, based on the deepest widget it contains.
+     *
+     * @param tab the tab to measure
+     * @param contentTop the content area's top edge y position
+     * @return the required content height, in pixels; never less than zero
+     */
+    private int computeRequiredContentHeight(TabPanelWidget tab, int contentTop) {
+        int deepestBottom = contentTop;
+        for (DraggableWidget widget : tab.getComponents()) {
+            deepestBottom = Math.max(deepestBottom, widget.getY() + widget.getHeight());
+        }
+        return Math.max(0, deepestBottom - contentTop);
+    }
+
+    /**
+     * Computes the maximum valid scroll offset for a tab: how far past
+     * the visible content area its content currently extends.
+     *
+     * @param tab the tab to measure
+     * @param contentTop the content area's top edge y position
+     * @param contentBottom the content area's bottom edge y position
+     * @return the maximum scroll offset, in pixels; zero if content fits without scrolling
+     */
+    private int computeMaxScroll(TabPanelWidget tab, int contentTop, int contentBottom) {
+        int requiredHeight = computeRequiredContentHeight(tab, contentTop);
+        int visibleHeight = contentBottom - contentTop;
+        return Math.max(0, requiredHeight - visibleHeight);
+    }
+
+    /**
+     * Renders the dashboard background, window frame, both resize
+     * handles, tab headers, add-tab button, the active tab's
+     * scroll-clipped widgets, and the vertical scrollbar if needed.
      *
      * @param graphics the graphics context to draw with
      * @param mouseX the current mouse x position
@@ -145,15 +337,21 @@ public class FactionScreen extends Screen {
         int overlayBottomColor = 0xD00A0A0A;
         graphics.fillGradient(0, 0, this.width, this.height, overlayTopColor, overlayBottomColor);
 
-        int mainX = this.width / 2 - (this.boxWidth / 2);
-        int mainY = this.height / 2 - (this.boxHeight / 2);
+        int mainX = getMainX();
+        int mainY = getMainY();
 
         graphics.fill(mainX, mainY, mainX + this.boxWidth, mainY + this.boxHeight, 0xDD111111);
         graphics.renderOutline(mainX, mainY, this.boxWidth, this.boxHeight, 0xFF444444);
 
-        int handleX = mainX + this.boxWidth - 8;
-        int handleY = mainY + this.boxHeight - 8;
-        graphics.fill(handleX, handleY, handleX + 6, handleY + 6, 0xFF666666);
+        // Bottom-right resize handle
+        int handleRightX = mainX + this.boxWidth - RESIZE_HANDLE_SIZE;
+        int handleRightY = mainY + this.boxHeight - RESIZE_HANDLE_SIZE;
+        graphics.fill(handleRightX, handleRightY, handleRightX + RESIZE_HANDLE_SIZE, handleRightY + RESIZE_HANDLE_SIZE, 0xFF666666);
+
+        // Bottom-left resize handle
+        int handleLeftX = mainX;
+        int handleLeftY = mainY + this.boxHeight - RESIZE_HANDLE_SIZE;
+        graphics.fill(handleLeftX, handleLeftY, handleLeftX + RESIZE_HANDLE_SIZE, handleLeftY + RESIZE_HANDLE_SIZE, 0xFF666666);
 
         TabManager.layoutHeaders(mainX, mainY, this.font);
         String activeTabId = TabManager.getActiveTabId();
@@ -167,14 +365,33 @@ public class FactionScreen extends Screen {
 
         TabPanelWidget activeTab = TabManager.getActiveTab();
         if (activeTab != null) {
+            int contentTop = getContentTop(mainY);
+            int contentBottom = getContentBottom(mainY);
+            int contentLeft = mainX + 4;
+            int contentRight = getContentRight(mainX);
+
+            // Horizontal clamp (unchanged from before) and a top-only vertical clamp —
+            // widgets are allowed to extend below the visible area now; that's what scrolling reveals.
             for (DraggableWidget widget : activeTab.getComponents()) {
-                int minWX = mainX + 4;
-                if (widget.getX() < minWX) widget.setPosition(minWX, widget.getY());
-                if (widget.getX() + 140 > mainX + this.boxWidth) widget.setPosition(mainX + this.boxWidth - 144, widget.getY());
-                if (widget.getY() < mainY + 24) widget.setPosition(widget.getX(), mainY + 24);
-                if (widget.getY() + 70 > mainY + this.boxHeight) widget.setPosition(widget.getX(), mainY + this.boxHeight - 74);
+                if (widget.getX() < contentLeft) widget.setPosition(contentLeft, widget.getY());
+                if (widget.getX() + widget.getWidth() > contentRight) widget.setPosition(contentRight - widget.getWidth(), widget.getY());
+                if (widget.getY() < contentTop) widget.setPosition(widget.getX(), contentTop);
             }
-            activeTab.renderContent(graphics, mouseX, mouseY, partialTicks);
+
+            int maxScroll = computeMaxScroll(activeTab, contentTop, contentBottom);
+            int scrollOffset = Math.max(0, Math.min(activeTab.getScrollOffsetY(), maxScroll));
+            activeTab.setScrollOffsetY(scrollOffset);
+
+            graphics.enableScissor(contentLeft, contentTop, contentRight, contentBottom);
+            graphics.pose().pushPose();
+            graphics.pose().translate(0, -scrollOffset, 0);
+            activeTab.renderContent(graphics, mouseX, mouseY + scrollOffset, partialTicks);
+            graphics.pose().popPose();
+            graphics.disableScissor();
+
+            if (maxScroll > 0) {
+                renderScrollbar(graphics, mainX, contentTop, contentBottom, scrollOffset, maxScroll);
+            }
         }
 
         // Render our own widgets (including an active rename EditBox, if any) directly,
@@ -182,6 +399,73 @@ public class FactionScreen extends Screen {
         for (Renderable renderable : this.renderables) {
             renderable.render(graphics, mouseX, mouseY, partialTicks);
         }
+    }
+
+    /**
+     * Renders the vertical scrollbar track and thumb along the content
+     * area's right edge.
+     *
+     * @param graphics the graphics context to draw with
+     * @param mainX the window's current left edge x position
+     * @param contentTop the content area's top edge y position
+     * @param contentBottom the content area's bottom edge y position
+     * @param scrollOffset the active tab's current scroll offset
+     * @param maxScroll the active tab's current maximum scroll offset
+     */
+    private void renderScrollbar(GuiGraphics graphics, int mainX, int contentTop, int contentBottom, int scrollOffset, int maxScroll) {
+        int trackX = getContentRight(mainX) + 2;
+        int trackHeight = contentBottom - contentTop;
+
+        graphics.fill(trackX, contentTop, trackX + SCROLLBAR_WIDTH, contentBottom, 0xFF1A1A1A);
+
+        int[] thumbBounds = computeScrollbarThumbBounds(contentTop, trackHeight, scrollOffset, maxScroll);
+        graphics.fill(trackX, thumbBounds[0], trackX + SCROLLBAR_WIDTH, thumbBounds[1], 0xFF888888);
+    }
+
+    /**
+     * Computes the scrollbar thumb's top and bottom y positions, sized
+     * proportionally to how much of the content is currently visible, and
+     * positioned proportionally to the current scroll offset.
+     *
+     * @param contentTop the content area's top edge y position
+     * @param trackHeight the scrollbar track's total height
+     * @param scrollOffset the active tab's current scroll offset
+     * @param maxScroll the active tab's current maximum scroll offset
+     * @return a two-element array: {@code [thumbTop, thumbBottom]}
+     */
+    private int[] computeScrollbarThumbBounds(int contentTop, int trackHeight, int scrollOffset, int maxScroll) {
+        int visibleHeight = trackHeight;
+        int totalHeight = trackHeight + maxScroll;
+        int thumbHeight = Math.max(SCROLLBAR_MIN_THUMB_HEIGHT, (int) ((long) visibleHeight * trackHeight / totalHeight));
+        int maxThumbTravel = trackHeight - thumbHeight;
+        int thumbTop = contentTop + (maxScroll > 0 ? (int) ((long) maxThumbTravel * scrollOffset / maxScroll) : 0);
+        return new int[] { thumbTop, thumbTop + thumbHeight };
+    }
+
+    /**
+     * Checks whether a point falls within the active tab's scrollbar
+     * thumb, if one is currently visible.
+     *
+     * @param mouseX the x position to check
+     * @param mouseY the y position to check
+     * @return {@code true} if the point is within the visible scrollbar thumb
+     */
+    private boolean isScrollbarThumbHovered(double mouseX, double mouseY) {
+        TabPanelWidget activeTab = TabManager.getActiveTab();
+        if (activeTab == null) return false;
+
+        int mainX = getMainX();
+        int mainY = getMainY();
+        int contentTop = getContentTop(mainY);
+        int contentBottom = getContentBottom(mainY);
+        int maxScroll = computeMaxScroll(activeTab, contentTop, contentBottom);
+        if (maxScroll <= 0) return false;
+
+        int trackX = getContentRight(mainX) + 2;
+        if (mouseX < trackX || mouseX > trackX + SCROLLBAR_WIDTH) return false;
+
+        int[] thumbBounds = computeScrollbarThumbBounds(contentTop, contentBottom - contentTop, activeTab.getScrollOffsetY(), maxScroll);
+        return mouseY >= thumbBounds[0] && mouseY <= thumbBounds[1];
     }
 
     /**
@@ -199,9 +483,13 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Handles mouse clicks for resizing the window, adding a new tab, tab
-     * header interaction (select or rename), and beginning a widget drag.
-     * A click outside an active rename box commits that rename first.
+     * Handles mouse clicks, in priority order: committing an in-progress
+     * tab rename if clicking elsewhere, then (in order) the two resize
+     * handles, the add-tab button, tab header interaction, the scrollbar
+     * thumb, beginning a widget drag (with the click's y position adjusted
+     * for the active tab's current scroll), and finally — if nothing else
+     * claimed the click and it landed on the window's empty background —
+     * beginning a window drag.
      *
      * @param mouseX the mouse x position
      * @param mouseY the mouse y position
@@ -215,13 +503,29 @@ public class FactionScreen extends Screen {
         }
 
         if (button == 0) {
-            int mainX = this.width / 2 - (this.boxWidth / 2);
-            int mainY = this.height / 2 - (this.boxHeight / 2);
+            int mainX = getMainX();
+            int mainY = getMainY();
 
-            if (mouseX >= mainX + this.boxWidth - 10 && mouseX <= mainX + this.boxWidth && mouseY >= mainY + this.boxHeight - 10 && mouseY <= mainY + this.boxHeight) {
-                this.isResizingBox = true;
+            // Bottom-right resize handle: keeps the top-left corner fixed, grows right/down.
+            if (mouseX >= mainX + this.boxWidth - RESIZE_HANDLE_SIZE && mouseX <= mainX + this.boxWidth
+                    && mouseY >= mainY + this.boxHeight - RESIZE_HANDLE_SIZE && mouseY <= mainY + this.boxHeight) {
+                this.activeResizeCorner = ResizeCorner.BOTTOM_RIGHT;
                 this.resizeOffsetX = (int) mouseX - this.boxWidth;
                 this.resizeOffsetY = (int) mouseY - this.boxHeight;
+                this.resizeFixedLeftEdge = mainX;
+                this.resizeFixedTopEdge = mainY;
+                this.resizeMinWidth = TabManager.getGlobalMinimumWidth(mainX);
+                return true;
+            }
+
+            // Bottom-left resize handle: keeps the top-right corner fixed, grows left/down.
+            if (mouseX >= mainX && mouseX <= mainX + RESIZE_HANDLE_SIZE
+                    && mouseY >= mainY + this.boxHeight - RESIZE_HANDLE_SIZE && mouseY <= mainY + this.boxHeight) {
+                this.activeResizeCorner = ResizeCorner.BOTTOM_LEFT;
+                this.resizeFixedRightEdge = mainX + this.boxWidth;
+                this.resizeFixedTopEdge = mainY;
+                this.resizeOffsetY = (int) mouseY - this.boxHeight;
+                this.resizeMinWidth = TabManager.getGlobalMinimumWidth(mainX);
                 return true;
             }
 
@@ -246,23 +550,94 @@ public class FactionScreen extends Screen {
                 return true;
             }
 
+            if (isScrollbarThumbHovered(mouseX, mouseY)) {
+                TabPanelWidget activeTabForScroll = TabManager.getActiveTab();
+                if (activeTabForScroll != null) {
+                    this.isDraggingScrollbar = true;
+                    this.scrollbarDragStartMouseY = mouseY;
+                    this.scrollbarDragStartOffset = activeTabForScroll.getScrollOffsetY();
+                    return true;
+                }
+            }
+
             TabPanelWidget activeTab = TabManager.getActiveTab();
             if (activeTab != null) {
+                double contentMouseY = mouseY + activeTab.getScrollOffsetY();
                 for (DraggableWidget widget : activeTab.getComponents()) {
-                    if (widget.mouseClicked(mouseX, mouseY, button)) {
+                    if (widget.mouseClicked(mouseX, contentMouseY, button)) {
                         this.activeDraggedComponent = widget;
                         return true;
                     }
                 }
+            }
+
+            // Nothing else claimed the click. If it landed on the window's empty
+            // background and window dragging is enabled, start dragging the window.
+            boolean withinWindow = mouseX >= mainX && mouseX <= mainX + this.boxWidth
+                    && mouseY >= mainY && mouseY <= mainY + this.boxHeight;
+            if (withinWindow && ModConfig.CLIENT.getBoolean("allowWindowDragging", true)) {
+                this.isDraggingWindow = true;
+                this.windowDragStartMouseX = mouseX;
+                this.windowDragStartMouseY = mouseY;
+                this.windowDragStartOffsetX = this.windowOffsetX;
+                this.windowDragStartOffsetY = this.windowOffsetY;
+                this.windowDragLastAppliedOffsetX = this.windowOffsetX;
+                this.windowDragLastAppliedOffsetY = this.windowOffsetY;
+                return true;
             }
         }
         return super.mouseClicked(mouseX, mouseY, button);
     }
 
     /**
-     * Handles dragging: either resizing the window, or moving the currently
-     * dragged widget (and switching its tab if dropped over a different
-     * tab header).
+     * Forwards a mouse-wheel scroll to whichever widget in the active tab
+     * is under the cursor (adjusted for the tab's current scroll, so a
+     * widget's own internal scroll handling, like the activity log's,
+     * sees the correct position); if no widget consumes it, scrolls the
+     * active tab itself instead.
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param scrollX the horizontal scroll amount
+     * @param scrollY the vertical scroll amount
+     * @return {@code true} if the scroll was handled
+     */
+    @Override
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        TabPanelWidget activeTab = TabManager.getActiveTab();
+        if (activeTab == null) {
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        double contentMouseY = mouseY + activeTab.getScrollOffsetY();
+        for (DraggableWidget widget : activeTab.getComponents()) {
+            if (widget.mouseScrolled(mouseX, contentMouseY, scrollX, scrollY)) {
+                return true;
+            }
+        }
+
+        int mainY = getMainY();
+        int contentTop = getContentTop(mainY);
+        int contentBottom = getContentBottom(mainY);
+        int maxScroll = computeMaxScroll(activeTab, contentTop, contentBottom);
+        if (maxScroll <= 0) {
+            return super.mouseScrolled(mouseX, mouseY, scrollX, scrollY);
+        }
+
+        int newOffset = activeTab.getScrollOffsetY() - (int) (scrollY * ModConfig.CLIENT.getInteger("dashboardScrollSpeed", 12));
+        activeTab.setScrollOffsetY(Math.max(0, Math.min(maxScroll, newOffset)));
+        return true;
+    }
+
+    /**
+     * Handles dragging: resizing the window from whichever corner is
+     * active (each keeping its opposite corner fixed by explicitly
+     * re-pinning both window offsets every tick), moving the window
+     * itself and every widget in every tab along with it if a window drag
+     * is in progress, dragging the scrollbar thumb, or moving the
+     * currently dragged widget (with its position adjusted for the active
+     * tab's current scroll, and switching its tab if dropped over a
+     * different tab header).
      *
      * @param mouseX the mouse x position
      * @param mouseY the mouse y position
@@ -273,14 +648,72 @@ public class FactionScreen extends Screen {
      */
     @Override
     public boolean mouseDragged(double mouseX, double mouseY, int button, double dragX, double dragY) {
-        if (this.isResizingBox) {
-            this.boxWidth = Math.max(240, (int) mouseX - this.resizeOffsetX);
-            this.boxHeight = Math.max(160, (int) mouseY - this.resizeOffsetY);
+        if (this.activeResizeCorner == ResizeCorner.BOTTOM_RIGHT) {
+            this.boxWidth = Math.max(this.resizeMinWidth, (int) mouseX - this.resizeOffsetX);
+            this.boxHeight = Math.max(MIN_BOX_HEIGHT, (int) mouseY - this.resizeOffsetY);
+
+            // getMainX()/getMainY() both have boxWidth/boxHeight baked into their centered-position
+            // formula, so both would silently drift as the window grows unless explicitly re-pinned
+            // back to the fixed edges captured when this resize began.
+            this.windowOffsetX = this.resizeFixedLeftEdge - (this.width / 2 - this.boxWidth / 2);
+            this.windowOffsetY = this.resizeFixedTopEdge - (this.height / 2 - this.boxHeight / 2);
+            return true;
+        }
+
+        if (this.activeResizeCorner == ResizeCorner.BOTTOM_LEFT) {
+            int newBoxWidth = Math.max(this.resizeMinWidth, this.resizeFixedRightEdge - (int) mouseX);
+            this.boxHeight = Math.max(MIN_BOX_HEIGHT, (int) mouseY - this.resizeOffsetY);
+
+            // The right edge must stay fixed. Since getMainX() = width/2 - boxWidth/2 + windowOffsetX,
+            // solve for the windowOffsetX that keeps (mainX + newBoxWidth) equal to the fixed right edge.
+            int desiredMainX = this.resizeFixedRightEdge - newBoxWidth;
+            this.boxWidth = newBoxWidth;
+            this.windowOffsetX = desiredMainX - (this.width / 2 - this.boxWidth / 2);
+            this.windowOffsetY = this.resizeFixedTopEdge - (this.height / 2 - this.boxHeight / 2);
+            return true;
+        }
+
+        if (this.isDraggingWindow) {
+            this.windowOffsetX = this.windowDragStartOffsetX + (int) (mouseX - this.windowDragStartMouseX);
+            this.windowOffsetY = this.windowDragStartOffsetY + (int) (mouseY - this.windowDragStartMouseY);
+
+            int deltaX = this.windowOffsetX - this.windowDragLastAppliedOffsetX;
+            int deltaY = this.windowOffsetY - this.windowDragLastAppliedOffsetY;
+            if (deltaX != 0 || deltaY != 0) {
+                for (TabPanelWidget tab : TabManager.getTabs()) {
+                    for (DraggableWidget widget : tab.getComponents()) {
+                        widget.setPosition(widget.getX() + deltaX, widget.getY() + deltaY);
+                    }
+                }
+                this.windowDragLastAppliedOffsetX = this.windowOffsetX;
+                this.windowDragLastAppliedOffsetY = this.windowOffsetY;
+            }
+            return true;
+        }
+
+        if (this.isDraggingScrollbar) {
+            TabPanelWidget activeTab = TabManager.getActiveTab();
+            if (activeTab != null) {
+                int mainY = getMainY();
+                int contentTop = getContentTop(mainY);
+                int contentBottom = getContentBottom(mainY);
+                int maxScroll = computeMaxScroll(activeTab, contentTop, contentBottom);
+                int trackHeight = contentBottom - contentTop;
+
+                if (maxScroll > 0 && trackHeight > 0) {
+                    double mouseDelta = mouseY - this.scrollbarDragStartMouseY;
+                    int scrollDelta = (int) (mouseDelta * maxScroll / trackHeight);
+                    int newOffset = this.scrollbarDragStartOffset + scrollDelta;
+                    activeTab.setScrollOffsetY(Math.max(0, Math.min(maxScroll, newOffset)));
+                }
+            }
             return true;
         }
 
         if (this.activeDraggedComponent != null) {
-            this.activeDraggedComponent.mouseDragged(mouseX, mouseY, button, dragX, dragY);
+            TabPanelWidget activeTab = TabManager.getActiveTab();
+            double contentMouseY = (activeTab != null) ? mouseY + activeTab.getScrollOffsetY() : mouseY;
+            this.activeDraggedComponent.mouseDragged(mouseX, contentMouseY, button, dragX, dragY);
 
             for (TabPanelWidget tab : TabManager.getTabs()) {
                 if (tab.isHeaderHovered(mouseX, mouseY) && !tab.getId().equals(TabManager.getActiveTabId())) {
@@ -295,8 +728,8 @@ public class FactionScreen extends Screen {
     }
 
     /**
-     * Ends any active resize or widget drag and persists the resulting
-     * layout to the client config.
+     * Ends any active resize, window drag, scrollbar drag, or widget
+     * drag, and persists the resulting layout to the client config.
      *
      * @param mouseX the mouse x position
      * @param mouseY the mouse y position
@@ -305,7 +738,9 @@ public class FactionScreen extends Screen {
      */
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
-        this.isResizingBox = false;
+        this.activeResizeCorner = ResizeCorner.NONE;
+        this.isDraggingWindow = false;
+        this.isDraggingScrollbar = false;
         if (this.activeDraggedComponent != null) {
             this.activeDraggedComponent.mouseReleased(mouseX, mouseY, button);
             this.activeDraggedComponent = null;
@@ -412,12 +847,12 @@ public class FactionScreen extends Screen {
     /**
      * Converts each widget's absolute position to a position relative to
      * the window, resolves each widget's current tab, and saves the full
-     * layout (widget positions/tabs, window size, and tab list) to the
-     * client config.
+     * layout (widget positions/tabs, window size and drag offset, and tab
+     * list) to the client config.
      */
     private void flushPlacementsToConfig() {
-        int mainX = this.width / 2 - (this.boxWidth / 2);
-        int mainY = this.height / 2 - (this.boxHeight / 2);
+        int mainX = getMainX();
+        int mainY = getMainY();
 
         ScreenLayoutSaver.saveFullLayout(
                 this.treasuryWidget.getX() - mainX - 20, this.treasuryWidget.getY() - mainY - 40, findWidgetTabId(this.treasuryWidget),
@@ -426,6 +861,7 @@ public class FactionScreen extends Screen {
                 this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, findWidgetTabId(this.avatarWidget),
                 this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, findWidgetTabId(this.activityWidget),
                 this.boxWidth, this.boxHeight,
+                this.windowOffsetX, this.windowOffsetY,
                 TabManager.getTabs()
         );
     }

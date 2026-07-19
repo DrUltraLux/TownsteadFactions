@@ -62,6 +62,13 @@ public class TabPanelWidget {
     private long lastClickTimeMs = -1;
 
     /**
+     * How far this tab's content is currently scrolled down, in pixels.
+     * Each tab remembers its own scroll position independently, so
+     * switching tabs and switching back preserves where you were.
+     */
+    private int scrollOffsetY = 0;
+
+    /**
      * Creates a new tab with no widgets assigned.
      *
      * @param id this tab's stable identifier
@@ -273,5 +280,25 @@ public class TabPanelWidget {
         for (DraggableWidget widget : this.components) {
             widget.render(graphics, mouseX, mouseY, partialTicks);
         }
+    }
+
+    /**
+     * Returns how far this tab's content is currently scrolled down.
+     *
+     * @return the current scroll offset, in pixels
+     */
+    public int getScrollOffsetY() {
+        return this.scrollOffsetY;
+    }
+
+    /**
+     * Sets how far this tab's content is scrolled down. Callers are
+     * responsible for clamping this to a valid range — this setter
+     * applies whatever value it's given as-is.
+     *
+     * @param scrollOffsetY the new scroll offset, in pixels
+     */
+    public void setScrollOffsetY(int scrollOffsetY) {
+        this.scrollOffsetY = scrollOffsetY;
     }
 }

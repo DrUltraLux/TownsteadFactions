@@ -4,6 +4,12 @@ import com.drultralux.townsteadfactions.factions.FactionTitle;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
 import com.drultralux.townsteadfactions.config.ModConfig;
+import com.drultralux.townsteadfactions.factions.ActivityLogEntry;
+import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import com.drultralux.townsteadfactions.network.payload.FactionC2SPayload;
+import net.neoforged.neoforge.network.PacketDistributor;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import java.util.HashMap;
@@ -138,6 +144,16 @@ public class ClientFactionCache {
                 }
             }
         }
+
+        if (factionTag.contains("activityLog", 9)) { // 9 is ListTag
+            ListTag logList = factionTag.getList("activityLog", 10); // 10 is CompoundTag
+            for (int i = 0; i < logList.size(); i++) {
+                CompoundTag entryTag = logList.getCompound(i);
+                data.activityLog.add(new ActivityLogEntry(entryTag.getLong("timestamp"), entryTag.getString("message")));
+            }
+        }
+        data.hasMoreLogHistory = factionTag.getBoolean("hasMoreLogHistory");
+
         return data;
     }
 
@@ -212,6 +228,54 @@ public class ClientFactionCache {
 
         /** Villager roster entries, keyed by UUID. */
         public final Map<UUID, RosterEntry> villagerRoster = new HashMap<>();
+
+        /** Cached activity log entries for this faction, newest first. */
+        public final List<ActivityLogEntry> activityLog = new ArrayList<>();
+
+        /** Whether older log history exists on the server beyond what's cached here. */
+        public boolean hasMoreLogHistory = false;
+    }
+
+    /**
+     * Requests the next older batch of activity log entries for a
+     * faction from the server. Does nothing if there's no known further
+     * history, or nothing cached yet to page backward from.
+     *
+     * @param factionId the faction to request more history for
+     */
+    public static void requestMoreActivityLog(String factionId) {
+        ClientFactionData data = cachedFactions.get(factionId);
+        if (data == null || data.activityLog.isEmpty() || !data.hasMoreLogHistory) return;
+
+        long beforeTimestamp = data.activityLog.get(data.activityLog.size() - 1).timestamp();
+
+        CompoundTag requestNbt = new CompoundTag();
+        requestNbt.putString("factionId", factionId);
+        requestNbt.putLong("beforeTimestamp", beforeTimestamp);
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_LOG_REQUEST_MORE, requestNbt));
+    }
+
+    /**
+     * Appends a server-provided older batch of activity log entries to
+     * the matching faction's cache, and updates whether further history
+     * remains available.
+     *
+     * @param nbt the response data, or {@code null} to do nothing
+     */
+    public static void applyMoreLogHistory(CompoundTag nbt) {
+        if (nbt == null) return;
+        String factionId = nbt.getString("factionId");
+        ClientFactionData data = cachedFactions.get(factionId);
+        if (data == null) return;
+
+        if (nbt.contains("entries", 9)) { // 9 is ListTag
+            ListTag entriesList = nbt.getList("entries", 10); // 10 is CompoundTag
+            for (int i = 0; i < entriesList.size(); i++) {
+                CompoundTag entryTag = entriesList.getCompound(i);
+                data.activityLog.add(new ActivityLogEntry(entryTag.getLong("timestamp"), entryTag.getString("message")));
+            }
+        }
+        data.hasMoreLogHistory = nbt.getBoolean("hasMore");
     }
 
     /**

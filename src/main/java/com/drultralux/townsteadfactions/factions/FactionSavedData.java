@@ -60,12 +60,24 @@ public class FactionSavedData extends SavedData {
                 factionNbt.putInt("mana", faction.getMana());
 
                 ListTag membersList = new ListTag();
-                for (UUID memberUuid : faction.getMembers()) {
-                    if (memberUuid != null) {
-                        membersList.add(NbtUtils.createUUID(memberUuid));
-                    }
-                }
+                faction.getMembers().forEach((memberUuid, profile) -> {
+                    CompoundTag memberTag = new CompoundTag();
+                    memberTag.putUUID("uuid", memberUuid);
+                    memberTag.putString("title", profile.getTitle().name());
+                    memberTag.putLong("joinTimestamp", profile.getJoinTimestamp());
+                    membersList.add(memberTag);
+                });
                 factionNbt.put("members", membersList);
+
+                //CompoundTag activityLogTag = new CompoundTag();
+                ListTag logList = new ListTag();
+                for (ActivityLogEntry logEntry : faction.getActivityLog()) {
+                    CompoundTag entryTag = new CompoundTag();
+                    entryTag.putLong("timestamp", logEntry.timestamp());
+                    entryTag.putString("message", logEntry.message());
+                    logList.add(entryTag);
+                }
+                factionNbt.put("activityLog", logList);
 
                 factionsTag.put(id, factionNbt);
             }

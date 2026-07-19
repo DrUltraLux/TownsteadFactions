@@ -340,6 +340,29 @@ public final class TabManager {
     }
 
     /**
+     * Computes the minimum window width, in pixels, that would avoid
+     * clipping any widget in any tab, based on each widget's current
+     * position relative to the window's left edge. Takes the maximum
+     * requirement across all tabs, so the window can never be resized
+     * below a width that would clip a widget in a tab you aren't
+     * currently viewing — switching tabs afterward never forces an
+     * unexpected resize.
+     *
+     * @param mainX the window's current absolute left-edge x position
+     * @return the minimum width, in pixels, required across all tabs
+     */
+    public static int getGlobalMinimumWidth(int mainX) {
+        int globalMin = 200; // absolute floor, enough for tab headers and the add-tab button
+        for (TabPanelWidget tab : tabs) {
+            for (DraggableWidget widget : tab.getComponents()) {
+                int requiredWidth = (widget.getX() - mainX) + widget.getWidth() + 10;
+                globalMin = Math.max(globalMin, requiredWidth);
+            }
+        }
+        return globalMin;
+    }
+
+    /**
      * Resets the dashboard to its default tab layout, discarding all
      * current tabs and widget placements. Used by the layout-version and
      * admin-triggered reset mechanisms.

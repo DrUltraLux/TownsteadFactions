@@ -156,10 +156,38 @@ public abstract class DraggableWidget {
     public int getY() { return this.y; }
 
     /**
+     * Returns this widget's width.
+     *
+     * @return the width, in pixels
+     */
+    public int getWidth() { return this.width; }
+
+    /**
+     * Returns this widget's height.
+     *
+     * @return the height, in pixels
+     */
+    public int getHeight() { return this.height; }
+
+    /**
      * Sets this widget's position directly.
      *
      * @param x the new x position
      * @param y the new y position
      */
     public void setPosition(int x, int y) { this.x = x; this.y = y; }
+
+    /**
+     * Handles a mouse-wheel scroll. Default no-op; overridden by widgets
+     * that support scrolling (e.g. the activity log).
+     *
+     * @param mouseX the mouse x position
+     * @param mouseY the mouse y position
+     * @param scrollX the horizontal scroll amount, unused by most widgets
+     * @param scrollY the vertical scroll amount
+     * @return {@code true} if the scroll was handled by this widget
+     */
+    public boolean mouseScrolled(double mouseX, double mouseY, double scrollX, double scrollY) {
+        return false;
+    }
 }

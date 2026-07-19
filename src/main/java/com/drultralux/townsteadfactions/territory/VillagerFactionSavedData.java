@@ -1,9 +1,9 @@
 package com.drultralux.townsteadfactions.territory;
 
+import com.drultralux.townsteadfactions.utils.LogManager;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.world.level.saveddata.SavedData;
-
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -41,7 +41,7 @@ public class VillagerFactionSavedData extends SavedData {
                     );
                     data.villagerRecords.put(UUID.fromString(key), record);
                 } catch (Exception e) {
-                    // Skip malformed entries rather than fail the whole load
+                    LogManager.warn("Skipping malformed villager record entry: '" + key + "'");
                 }
             }
         }

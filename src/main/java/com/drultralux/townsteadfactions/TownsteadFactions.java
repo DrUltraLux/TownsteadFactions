@@ -7,6 +7,7 @@ import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.events.FactionServerEvents;
 import com.drultralux.townsteadfactions.network.FactionPacketActions;
 import com.drultralux.townsteadfactions.network.FactionPacketDispatcher;
+import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.network.payload.FactionC2SPayload;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
 import com.drultralux.townsteadfactions.utils.LogManager;
@@ -74,12 +75,16 @@ public class TownsteadFactions {
 
         FactionServerEvents.registerListeners(NeoForge.EVENT_BUS);
 
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_LOG_REQUEST_MORE, (player, data) ->
+                FactionPacketManager.sendMoreActivityLog(player, data.getString("factionId"), data.getLong("beforeTimestamp")));
+
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.register(ClientModEvents.ClientModBusEvents.class);
             NeoForge.EVENT_BUS.register(ClientModEvents.ClientGameBusEvents.class);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC, ClientFactionCache::readSyncStream);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC_DELTA, ClientFactionCache::applyDelta);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_LAYOUT_RESET, data -> ScreenLayoutSaver.resetToDefaults());
+            FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_LOG_MORE, ClientFactionCache::applyMoreLogHistory);
         }
 
         LogManager.info("Launchpad constructor sequence complete. Processing context transferred.");

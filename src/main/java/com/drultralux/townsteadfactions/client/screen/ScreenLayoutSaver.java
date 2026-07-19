@@ -39,6 +39,8 @@ public class ScreenLayoutSaver {
      * @param lTabId activity log widget's assigned tab ID
      * @param boxW main dashboard window width
      * @param boxH main dashboard window height
+     * @param boxOffsetX the window's horizontal drag offset from its default centered position
+     * @param boxOffsetY the window's vertical drag offset from its default centered position
      * @param tabs the current tabs, in display order, to persist
      */
     public static void saveFullLayout(
@@ -48,6 +50,7 @@ public class ScreenLayoutSaver {
             int ax, int ay, String aTabId,
             int lx, int ly, String lTabId,
             int boxW, int boxH,
+            int boxOffsetX, int boxOffsetY,
             List<TabPanelWidget> tabs) {
         try {
             setAgnosticValue("treasuryWidgetX", tx);
@@ -72,6 +75,8 @@ public class ScreenLayoutSaver {
 
             setAgnosticValue("mainBoxWidth", boxW);
             setAgnosticValue("mainBoxHeight", boxH);
+            setAgnosticValue("mainBoxOffsetX", boxOffsetX);
+            setAgnosticValue("mainBoxOffsetY", boxOffsetY);
 
             List<String> encodedTabs = new ArrayList<>();
             for (TabPanelWidget tab : tabs) {

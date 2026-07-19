@@ -1,5 +1,6 @@
 package com.drultralux.townsteadfactions.config;
 
+import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -271,6 +272,7 @@ public class ModConfig {
         try {
             if (COMMON_SPEC.isLoaded()) {
                 LogManager.setDebugEnabled(COMMON.getBoolean("enableDebugLogging", false));
+                FactionManager.trimAllActivityLogsToCap();
             }
 
             if (CLIENT_SPEC.isLoaded()) {

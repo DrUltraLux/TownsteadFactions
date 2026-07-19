@@ -20,9 +20,13 @@ public class ClientConfigModel {
      */
     public ClientConfigModel() {
         // Main window bounds
+        // Main window bounds
         interfaceSettings.put("mainBoxWidth", 360);
         interfaceSettings.put("mainBoxHeight", 220);
+        interfaceSettings.put("mainBoxOffsetX", 0);
+        interfaceSettings.put("mainBoxOffsetY", 0);
         interfaceSettings.put("allowWindowDragging", true);
+        interfaceSettings.put("dashboardScrollSpeed", 12);
 
         // Layout reset tracking (see TabManager for how these are used)
         interfaceSettings.put("savedLayoutVersion", 1);

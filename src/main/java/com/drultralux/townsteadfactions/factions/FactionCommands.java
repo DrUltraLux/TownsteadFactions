@@ -357,6 +357,13 @@ public class FactionCommands {
         try {
             ServerPlayer player = source.getPlayerOrException();
             TitlePreferenceManager.setSelfAssignedTitle(player.getUUID(), title);
+
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId != null) {
+                FactionManager.logFactionAction(factionId, player.getName().getString() + " set their title to " + title.getDisplayName() + ".");
+                FactionPacketManager.broadcastFactionDelta(factionId, source.getServer());
+            }
+
             source.sendSuccess(() -> Component.literal("§aYour faction title is now set to: " + title.getDisplayName()), false);
             return 1;
         } catch (Exception e) {
@@ -377,6 +384,13 @@ public class FactionCommands {
         try {
             ServerPlayer player = source.getPlayerOrException();
             TitlePreferenceManager.setSelfAssignedTitle(player.getUUID(), null);
+
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId != null) {
+                FactionManager.logFactionAction(factionId, player.getName().getString() + " reset their title to the default.");
+                FactionPacketManager.broadcastFactionDelta(factionId, source.getServer());
+            }
+
             source.sendSuccess(() -> Component.literal("§aYour faction title has been reset to the default."), false);
             return 1;
         } catch (Exception e) {

@@ -1,7 +1,7 @@
 package com.drultralux.townsteadfactions.territory;
 
 import com.drultralux.townsteadfactions.territory.VillageControlSavedData.VillageControlState;
-
+import com.drultralux.townsteadfactions.factions.FactionManager;
 import java.util.List;
 import java.util.Map;
 
@@ -96,7 +96,16 @@ public final class VillageControlManager {
         } else {
             state.contested = false;
             state.contestedFactions.clear();
-            state.controllingFactionId = leaders.get(0);
+            String previousController = state.controllingFactionId;
+            String newController = leaders.get(0);
+
+            if (!newController.equals(previousController)) {
+                if (previousController != null) {
+                    FactionManager.logFactionAction(previousController, "Lost control of a village to " + newController + ".");
+                }
+                FactionManager.logFactionAction(newController, "Gained control of a village" + (previousController != null ? " from " + previousController : "") + ".");
+            }
+            state.controllingFactionId = newController;
         }
 
         activeStorageInstance.setDirty();

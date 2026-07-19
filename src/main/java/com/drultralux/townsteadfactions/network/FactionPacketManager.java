@@ -7,6 +7,9 @@ import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
 import com.drultralux.townsteadfactions.territory.VillageControlManager;
 import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
+import com.drultralux.townsteadfactions.layout.LayoutResetManager;
+import com.drultralux.townsteadfactions.factions.ActivityLogEntry;
+import java.util.List;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
@@ -53,6 +56,7 @@ public class FactionPacketManager {
         nbt.putInt("cogs", FactionManager.getPlayerFactionAsset(playerUUID, "cogs"));
         nbt.putInt("food", FactionManager.getPlayerFactionAsset(playerUUID, "food"));
         nbt.putInt("mana", FactionManager.getPlayerFactionAsset(playerUUID, "mana"));
+        nbt.putInt("serverLayoutResetVersion", LayoutResetManager.getGlobalResetVersion());
 
         CompoundTag factionsTag = new CompoundTag();
         for (String id : FactionManager.getActiveFactionIds()) {
@@ -84,6 +88,38 @@ public class FactionPacketManager {
     }
 
     /**
+     * Builds and sends the next older batch of a faction's activity log
+     * to a player, in response to a {@link FactionPacketActions#FACTION_LOG_REQUEST_MORE}
+     * request.
+     *
+     * @param player the requesting player
+     * @param factionId the faction to fetch history for
+     * @param beforeTimestamp only entries strictly older than this are returned
+     */
+    public static void sendMoreActivityLog(ServerPlayer player, String factionId, long beforeTimestamp) {
+        if (player == null || factionId == null) return;
+
+        List<ActivityLogEntry> entries = FactionManager.getActivityLogBefore(factionId, beforeTimestamp, 20);
+
+        CompoundTag responseNbt = new CompoundTag();
+        responseNbt.putString("factionId", factionId);
+
+        ListTag entriesList = new ListTag();
+        for (ActivityLogEntry entry : entries) {
+            CompoundTag entryTag = new CompoundTag();
+            entryTag.putLong("timestamp", entry.timestamp());
+            entryTag.putString("message", entry.message());
+            entriesList.add(entryTag);
+        }
+        responseNbt.put("entries", entriesList);
+
+        boolean hasMore = !entries.isEmpty() && !FactionManager.getActivityLogBefore(factionId, entries.get(entries.size() - 1).timestamp(), 1).isEmpty();
+        responseNbt.putBoolean("hasMore", hasMore);
+
+        sendToPlayer(player, FactionPacketActions.FACTION_LOG_MORE, responseNbt);
+    }
+
+    /**
      * Builds an NBT snapshot of a single faction's ID, display name,
      * resources, and member roster. Each roster entry carries the
      * member's real UUID, display name, origin, and resolved title.
@@ -102,6 +138,17 @@ public class FactionPacketManager {
         snapshot.putInt("mana", FactionManager.getFactionAsset(factionId, "mana"));
         snapshot.putInt("villagerCount", VillagerFactionRegistry.getVillagerCountForFaction(factionId));
         snapshot.putInt("controlledVillages", VillageControlManager.getControlledVillageCount(factionId));
+
+        List<ActivityLogEntry> recentLog = FactionManager.getRecentActivityLog(factionId, 30);
+        ListTag activityLogList = new ListTag();
+        for (ActivityLogEntry entry : recentLog) {
+            CompoundTag entryTag = new CompoundTag();
+            entryTag.putLong("timestamp", entry.timestamp());
+            entryTag.putString("message", entry.message());
+            activityLogList.add(entryTag);
+        }
+        snapshot.put("activityLog", activityLogList);
+        snapshot.putBoolean("hasMoreLogHistory", !recentLog.isEmpty() && !FactionManager.getActivityLogBefore(factionId, recentLog.get(recentLog.size() - 1).timestamp(), 1).isEmpty());
 
         ListTag membersList = new ListTag();
         for (UUID memberUuid : FactionManager.getFactionMemberUUIDs(factionId)) {

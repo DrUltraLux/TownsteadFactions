@@ -19,4 +19,8 @@ public final class FactionPacketActions {
     public static final String FACTION_SYNC_DELTA = "faction_sync_delta";
     /** S2C: instructs the client to discard its saved dashboard layout and rebuild defaults next time it's opened. */
     public static final String FACTION_LAYOUT_RESET = "faction_layout_reset";
+    /** C2S: request older activity log entries for a faction, before a given timestamp. */
+    public static final String FACTION_LOG_REQUEST_MORE = "faction_log_request_more";
+    /** S2C: a batch of older activity log entries for a faction, in response to a request. */
+    public static final String FACTION_LOG_MORE = "faction_log_more";
 }

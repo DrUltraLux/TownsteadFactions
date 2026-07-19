@@ -110,7 +110,8 @@ public class OriginManager {
             lastKnownRootIds.put(player.getUUID(), cleanedRootId);
 
             if (cleanedRootId.isEmpty()) {
-                LogManager.debug("Player " + player.getName().getString() + " does not possess an assigned rootId configuration.");
+                LogManager.debug("Player " + player.getName().getString() + " has no assigned Townstead origin (base/default form). Using fallback faction.");
+                assignFallbackFaction(player);
                 return;
             }
 
@@ -141,8 +142,9 @@ public class OriginManager {
             }
 
             if (cleaned.isEmpty()) {
-                LogManager.debug("Player " + player.getName().getString() + " no longer has an assigned rootId.");
-                return false;
+                LogManager.debug("Player " + player.getName().getString() + " no longer has an assigned Townstead origin (base/default form). Using fallback faction.");
+                assignFallbackFaction(player);
+                return true;
             }
 
             LogManager.info("Detected origin change for player " + player.getName().getString() + " (now: " + getCleanName(cleaned) + ")");
@@ -211,7 +213,10 @@ public class OriginManager {
             LogManager.error("Player " + player.getName().getString() + " has no usable origin, and no fallback faction exists because no factions are currently configured. This player cannot be assigned to a faction.");
             return;
         }
-        FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), fallbackFactionId);
+        boolean changed = FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), fallbackFactionId);
+        if (changed) {
+            FactionManager.logFactionAction(fallbackFactionId, player.getName().getString() + " joined the faction.");
+        }
     }
 
     /**
@@ -239,7 +244,10 @@ public class OriginManager {
         }
 
         LogManager.info("Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
-        FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
+        boolean changed = FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
+        if (changed) {
+            FactionManager.logFactionAction(targetFactionKey, player.getName().getString() + " joined the faction.");
+        }
     }
 
     /**

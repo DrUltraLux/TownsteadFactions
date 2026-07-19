@@ -1,12 +1,16 @@
 package com.drultralux.townsteadfactions.factions;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
  * Represents a single faction: its identity, leader, currency balances,
- * member list, and the set of origins allowed to join it.
+ * member roster, and the set of origins allowed to join it.
  */
 public class Faction {
 
@@ -22,8 +26,23 @@ public class Faction {
     /** Origin identifiers whose members are allowed to join this faction. */
     private final List<String> validOrigins = new ArrayList<>();
 
-    /** UUIDs of this faction's current members. */
-    private final List<UUID> members = new ArrayList<>();
+    /**
+     * This faction's members, keyed by UUID, in join order. Each member's
+     * faction-internal role (Leader/Member) and join time live on their
+     * {@link MemberProfile} — this is distinct from a player's
+     * self-assigned cosmetic title or their Capitals-derived nobility
+     * rank, both handled elsewhere.
+     */
+    private final Map<UUID, MemberProfile> members = new LinkedHashMap<>();
+
+    /**
+     * This faction's full activity history, oldest first. An
+     * {@link ArrayDeque} rather than a list, since entries are only ever
+     * appended at the end and trimmed from the front when over the
+     * configured cap — both O(1) here, versus O(n) per removal with an
+     * {@code ArrayList}.
+     */
+    private final Deque<ActivityLogEntry> activityLog = new ArrayDeque<>();
 
     /** This faction's current cogs (currency) balance. */
     private int cogs = 0;
@@ -121,22 +140,25 @@ public class Faction {
     }
 
     /**
-     * Returns this faction's current members.
+     * Returns this faction's members, keyed by UUID. Modifying the
+     * returned map modifies this faction directly — intended for use by
+     * {@code FactionManager} and the save/load path only.
      *
-     * @return the UUIDs of this faction's members
+     * @return the member roster
      */
-    public List<UUID> getMembers() {
+    public Map<UUID, MemberProfile> getMembers() {
         return this.members;
     }
 
     /**
-     * Adds a player to this faction, if not already a member.
+     * Adds a player to this faction as a regular member, if not already
+     * present.
      *
      * @param playerUUID the UUID of the player to add
      */
     public void addMember(UUID playerUUID) {
-        if (playerUUID != null && !this.members.contains(playerUUID)) {
-            this.members.add(playerUUID);
+        if (playerUUID != null) {
+            this.members.putIfAbsent(playerUUID, new MemberProfile(playerUUID, FactionTitle.MEMBER));
         }
     }
 
@@ -149,6 +171,32 @@ public class Faction {
         if (playerUUID != null) {
             this.members.remove(playerUUID);
         }
+    }
+
+    /**
+     * Restores a member profile as-is, without the "if not already
+     * present" check {@link #addMember} applies. Intended for the save/load
+     * path only, where the saved title and join time should be trusted
+     * and reapplied directly.
+     *
+     * @param profile the member profile to restore
+     */
+    public void restoreMember(MemberProfile profile) {
+        if (profile != null && profile.getPlayerUUID() != null) {
+            this.members.put(profile.getPlayerUUID(), profile);
+        }
+    }
+
+    /**
+     * Checks whether a player currently holds the Leader role within this
+     * faction's internal structure.
+     *
+     * @param playerUUID the player to check
+     * @return {@code true} if they're a member with the Leader title
+     */
+    public boolean isLeader(UUID playerUUID) {
+        MemberProfile profile = this.members.get(playerUUID);
+        return profile != null && profile.getTitle() == FactionTitle.LEADER;
     }
 
     /**
@@ -192,4 +240,42 @@ public class Faction {
      * @param value the new mana balance
      */
     public void setMana(int value) { this.mana = value; }
+
+    /**
+     * Appends an entry to this faction's activity log, trimming the
+     * oldest entries if the given cap is exceeded.
+     *
+     * @param message the entry to record
+     * @param cap the maximum number of entries to retain
+     */
+    public void addLogEntry(String message, int cap) {
+        this.activityLog.addLast(new ActivityLogEntry(System.currentTimeMillis(), message));
+        trimLogToCap(cap);
+    }
+
+    /**
+     * Trims this faction's activity log down to the given cap, discarding
+     * the oldest entries first, without adding a new one. Used both after
+     * appending a new entry, and to immediately re-apply a lowered cap
+     * after a config change, rather than waiting for the faction's next
+     * activity to catch up.
+     *
+     * @param cap the maximum number of entries to retain
+     */
+    public void trimLogToCap(int cap) {
+        while (this.activityLog.size() > cap) {
+            this.activityLog.removeFirst();
+        }
+    }
+
+    /**
+     * Returns this faction's full activity log, oldest first. Modifying
+     * the returned deque modifies this faction directly — intended for
+     * use by {@code FactionManager} and the save/load path only.
+     *
+     * @return the activity log
+     */
+    public Deque<ActivityLogEntry> getActivityLog() {
+        return this.activityLog;
+    }
 }

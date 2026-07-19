@@ -16,6 +16,8 @@ import com.drultralux.townsteadfactions.territory.VillageControlSavedData;
 import com.drultralux.townsteadfactions.territory.VillageCensusTicker;
 import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
 import com.drultralux.townsteadfactions.territory.VillagerFactionSavedData;
+import net.conczin.mca.entity.VillagerEntityMCA;
+import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixTypes;
@@ -58,6 +60,7 @@ public class FactionServerEvents {
         gameBus.addListener(FactionServerEvents::onServerTick);
         gameBus.addListener(FactionServerEvents::onPlayerLoggedOut);
         gameBus.addListener(VillageCensusTicker::onServerTick);
+        gameBus.addListener(FactionServerEvents::onVillagerDeath);
         LogManager.info("Successfully centralized and registered all faction gameplay lifecycle listeners.");
     }
 
@@ -213,6 +216,20 @@ public class FactionServerEvents {
     public static void syncPlayerFactionData(ServerPlayer player) {
         if (player != null) {
             FactionPacketManager.sendFactionDataToClient(player);
+        }
+    }
+
+    /**
+     * Removes a dead villager's cached faction record, so
+     * {@link VillagerFactionRegistry} doesn't accumulate stale entries
+     * for villagers who are gone for good, over a long-running server's
+     * lifetime.
+     *
+     * @param event the living-death event
+     */
+    public static void onVillagerDeath(LivingDeathEvent event) {
+        if (event.getEntity() instanceof VillagerEntityMCA villager) {
+            VillagerFactionRegistry.removeVillager(villager.getUUID());
         }
     }
 }

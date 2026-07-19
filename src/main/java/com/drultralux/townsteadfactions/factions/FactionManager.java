@@ -9,6 +9,7 @@ import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.Iterator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -77,18 +78,6 @@ public class FactionManager {
     }
 
     /**
-     * Replaces the active factions map directly with previously saved
-     * faction data, bypassing config-based initialization.
-     *
-     * @param savedFactions the factions to load; does nothing if {@code null} or empty
-     */
-    public void loadFactionPersistenceData(Map<String, Faction> savedFactions) {
-        if (savedFactions == null || savedFactions.isEmpty()) return;
-        this.activeFactions.clear();
-        this.activeFactions.putAll(savedFactions);
-    }
-
-    /**
      * Rebuilds the active factions map from saved world data, if present,
      * then reconciles it against the current {@code factions.json}
      * configuration so origin changes are picked up without losing saved
@@ -125,10 +114,27 @@ public class FactionManager {
                 faction.setLeaderUUID(factionTag.getUUID("leaderUUID"));
             }
 
+            if (factionTag.contains("activityLog", 9)) { // 9 is ListTag
+                ListTag logList = factionTag.getList("activityLog", 10); // 10 is CompoundTag
+                for (int j = 0; j < logList.size(); j++) {
+                    CompoundTag entryTag = logList.getCompound(j);
+                    faction.getActivityLog().add(new ActivityLogEntry(entryTag.getLong("timestamp"), entryTag.getString("message")));
+                }
+            }
+
             if (factionTag.contains("members", 9)) { // 9 is ListTag
-                ListTag membersList = factionTag.getList("members", 11); // 11 is IntArrayTag for UUIDs
+                ListTag membersList = factionTag.getList("members", 10); // 10 is CompoundTag
                 for (int j = 0; j < membersList.size(); j++) {
-                    faction.getMembers().add(NbtUtils.loadUUID(membersList.get(j)));
+                    CompoundTag memberTag = membersList.getCompound(j);
+                    UUID memberUuid = memberTag.getUUID("uuid");
+                    FactionTitle savedTitle;
+                    try {
+                        savedTitle = FactionTitle.valueOf(memberTag.getString("title"));
+                    } catch (Exception e) {
+                        savedTitle = FactionTitle.MEMBER;
+                        LogManager.warn("Skipping unrecognized saved title for member " + memberUuid + " in faction '" + cleanId + "', defaulting to Member.");
+                    }
+                    faction.restoreMember(new MemberProfile(memberUuid, savedTitle));
                 }
             }
 
@@ -183,25 +189,32 @@ public class FactionManager {
 
     /**
      * Assigns a player to a faction, removing them from any other faction
-     * first to avoid duplicate membership.
+     * first to avoid duplicate membership. Does nothing (and returns
+     * {@code false}) if they're already correctly assigned there.
      *
      * @param playerUUID the UUID of the player to assign
      * @param factionId the ID of the faction to assign them to; does nothing if unknown
+     * @return {@code true} if this call actually changed their assignment
      */
-    public void assignPlayerToFaction(UUID playerUUID, String factionId) {
-        if (playerUUID == null || factionId == null) return;
+    public boolean assignPlayerToFaction(UUID playerUUID, String factionId) {
+        if (playerUUID == null || factionId == null) return false;
         String cleanId = factionId.trim();
 
-        if (this.activeFactions.containsKey(cleanId)) {
-            // Remove the player from every faction first, to prevent duplicate membership
-            for (Faction faction : this.activeFactions.values()) {
-                faction.removeMember(playerUUID);
-            }
-            this.activeFactions.get(cleanId).addMember(playerUUID);
-            LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
-        } else {
+        if (!this.activeFactions.containsKey(cleanId)) {
             LogManager.warn("Attempted to assign player " + playerUUID + " to unknown faction ID: '" + cleanId + "'");
+            return false;
         }
+
+        if (cleanId.equals(getPlayerFactionId(playerUUID))) {
+            return false; // already correctly assigned, nothing to do
+        }
+
+        for (Faction faction : this.activeFactions.values()) {
+            faction.removeMember(playerUUID);
+        }
+        this.activeFactions.get(cleanId).addMember(playerUUID);
+        LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
+        return true;
     }
 
     /**
@@ -214,7 +227,7 @@ public class FactionManager {
     public static String getPlayerFactionId(UUID playerUUID) {
         if (playerUUID == null) return null;
         for (Faction faction : getInstance().getActiveFactions().values()) {
-            if (faction.getMembers().contains(playerUUID)) {
+            if (faction.getMembers().containsKey(playerUUID)) {
                 return faction.getId();
             }
         }
@@ -290,6 +303,8 @@ public class FactionManager {
         if (activeStorageInstance != null) {
             activeStorageInstance.setDirty();
         }
+
+        logFactionAction(factionId, "Resource '" + assetType + "' adjusted by " + amount + ".");
         return true;
     }
 
@@ -325,8 +340,8 @@ public class FactionManager {
     public static List<UUID> getFactionMemberUUIDs(String factionId) {
         if (factionId == null) return List.of();
         Faction faction = getInstance().getActiveFactions().get(factionId.trim());
-        if (faction == null || faction.getMembers() == null) return List.of();
-        return new ArrayList<>(faction.getMembers());
+        if (faction == null) return List.of();
+        return new ArrayList<>(faction.getMembers().keySet());
     }
 
     /**
@@ -460,6 +475,8 @@ public class FactionManager {
         if (activeStorageInstance != null) {
             activeStorageInstance.setDirty();
         }
+
+        logFactionAction(factionId, "Resource '" + targetResource + "' " + op + " " + amount + " (admin action).");
         return 1;
     }
 
@@ -526,5 +543,87 @@ public class FactionManager {
             }
         }
         return listBuilder.toString();
+    }
+
+    /**
+     * Records an entry in a faction's activity log, trimming to the
+     * configured cap. The sole entry point for writing to a faction's log
+     * — other classes should never touch {@link Faction#addLogEntry}
+     * directly.
+     *
+     * @param factionId the faction to log against
+     * @param message the human-readable description of what happened
+     */
+    public static void logFactionAction(String factionId, String message) {
+        if (factionId == null || message == null) return;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return;
+
+        int cap = ModConfig.COMMON.getInteger("factionActivityLogCap", 2000);
+        faction.addLogEntry(message, cap);
+
+        if (activeStorageInstance != null) {
+            activeStorageInstance.setDirty();
+        }
+    }
+
+    /**
+     * Returns a faction's most recent activity log entries, newest first.
+     *
+     * @param factionId the faction to query
+     * @param limit the maximum number of entries to return
+     * @return the most recent entries, newest first
+     */
+    public static List<ActivityLogEntry> getRecentActivityLog(String factionId, int limit) {
+        if (factionId == null) return List.of();
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return List.of();
+
+        List<ActivityLogEntry> result = new ArrayList<>();
+        Iterator<ActivityLogEntry> it = faction.getActivityLog().descendingIterator();
+        while (it.hasNext() && result.size() < limit) {
+            result.add(it.next());
+        }
+        return result;
+    }
+
+    /**
+     * Returns up to {@code limit} of a faction's activity log entries
+     * strictly older than the given timestamp, newest first among that
+     * older set — used to page further back through history.
+     *
+     * @param factionId the faction to query
+     * @param beforeTimestamp only entries strictly older than this are returned
+     * @param limit the maximum number of entries to return
+     * @return the matching entries, newest first
+     */
+    public static List<ActivityLogEntry> getActivityLogBefore(String factionId, long beforeTimestamp, int limit) {
+        if (factionId == null) return List.of();
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return List.of();
+
+        List<ActivityLogEntry> result = new ArrayList<>();
+        Iterator<ActivityLogEntry> it = faction.getActivityLog().descendingIterator();
+        while (it.hasNext() && result.size() < limit) {
+            ActivityLogEntry entry = it.next();
+            if (entry.timestamp() < beforeTimestamp) {
+                result.add(entry);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Trims every active faction's activity log to the currently
+     * configured cap, discarding the oldest entries first. Called when
+     * common config is (re)loaded, so a lowered cap takes effect
+     * immediately rather than waiting for each faction's next log-worthy
+     * activity to catch up.
+     */
+    public static void trimAllActivityLogsToCap() {
+        int cap = ModConfig.COMMON.getInteger("factionActivityLogCap", 2000);
+        for (Faction faction : getInstance().getActiveFactions().values()) {
+            faction.trimLogToCap(cap);
+        }
     }
 }
