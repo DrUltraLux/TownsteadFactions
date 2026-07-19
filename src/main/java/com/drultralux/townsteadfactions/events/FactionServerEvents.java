@@ -9,6 +9,13 @@ import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import com.drultralux.townsteadfactions.layout.LayoutResetSavedData;
 import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import com.drultralux.townsteadfactions.titles.TitlePreferenceManager;
+import com.drultralux.townsteadfactions.titles.TitlePreferenceSavedData;
+import com.drultralux.townsteadfactions.territory.VillageControlManager;
+import com.drultralux.townsteadfactions.territory.VillageControlSavedData;
+import com.drultralux.townsteadfactions.territory.VillageCensusTicker;
+import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
+import com.drultralux.townsteadfactions.territory.VillagerFactionSavedData;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.util.datafix.DataFixTypes;
@@ -50,6 +57,7 @@ public class FactionServerEvents {
         gameBus.addListener(FactionServerEvents::onPlayerLoggedIn);
         gameBus.addListener(FactionServerEvents::onServerTick);
         gameBus.addListener(FactionServerEvents::onPlayerLoggedOut);
+        gameBus.addListener(VillageCensusTicker::onServerTick);
         LogManager.info("Successfully centralized and registered all faction gameplay lifecycle listeners.");
     }
 
@@ -124,6 +132,36 @@ public class FactionServerEvents {
                     "townsteadfactions_layoutreset"
             );
             LayoutResetManager.setStorageInstance(layoutResetData);
+
+            TitlePreferenceSavedData titlePreferenceData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            TitlePreferenceSavedData::new,
+                            TitlePreferenceSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_titleprefs"
+            );
+            TitlePreferenceManager.setStorageInstance(titlePreferenceData);
+
+            VillagerFactionSavedData villagerFactionData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            VillagerFactionSavedData::new,
+                            VillagerFactionSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_villagerfactions"
+            );
+            VillagerFactionRegistry.setStorageInstance(villagerFactionData);
+
+            VillageControlSavedData villageControlData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            VillageControlSavedData::new,
+                            VillageControlSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_villagecontrol"
+            );
+            VillageControlManager.setStorageInstance(villageControlData);
 
             if (savedData.rawLoadedTag != null && savedData.rawLoadedTag.contains("factions", 10)) {
                 LogManager.info("Persistent world records found. Initiating secure database recovery merge...");

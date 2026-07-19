@@ -1,11 +1,14 @@
 package com.drultralux.townsteadfactions.network;
 
 import com.drultralux.townsteadfactions.factions.FactionManager;
+import com.drultralux.townsteadfactions.factions.FactionTitle;
+import com.drultralux.townsteadfactions.factions.TitleManager;
+import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
-import com.drultralux.townsteadfactions.layout.LayoutResetManager;
+import com.drultralux.townsteadfactions.territory.VillageControlManager;
+import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.StringTag;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.neoforge.network.PacketDistributor;
@@ -50,7 +53,6 @@ public class FactionPacketManager {
         nbt.putInt("cogs", FactionManager.getPlayerFactionAsset(playerUUID, "cogs"));
         nbt.putInt("food", FactionManager.getPlayerFactionAsset(playerUUID, "food"));
         nbt.putInt("mana", FactionManager.getPlayerFactionAsset(playerUUID, "mana"));
-        nbt.putInt("serverLayoutResetVersion", LayoutResetManager.getGlobalResetVersion());
 
         CompoundTag factionsTag = new CompoundTag();
         for (String id : FactionManager.getActiveFactionIds()) {
@@ -68,7 +70,7 @@ public class FactionPacketManager {
      * changed.
      *
      * @param factionId the faction whose data changed
-     * @param server the server, used to resolve member usernames and the player list
+     * @param server the server, used to resolve member usernames/origins and the player list
      */
     public static void broadcastFactionDelta(String factionId, MinecraftServer server) {
         if (factionId == null || server == null) return;
@@ -83,25 +85,48 @@ public class FactionPacketManager {
 
     /**
      * Builds an NBT snapshot of a single faction's ID, display name,
-     * resources, and member display names.
+     * resources, and member roster. Each roster entry carries the
+     * member's real UUID, display name, origin, and resolved title.
      *
      * @param factionId the faction to snapshot
-     * @param server the server, used to resolve member usernames; may be {@code null}
+     * @param server the server, used to resolve member usernames/origins; may be {@code null}
      * @return the faction's snapshot as an NBT compound tag
      */
     private static CompoundTag buildFactionSnapshot(String factionId, MinecraftServer server) {
         CompoundTag snapshot = new CompoundTag();
         snapshot.putString("id", factionId);
-        snapshot.putString("displayName", FactionManager.getFactionDisplayName(factionId));
+        String displayName = FactionManager.getFactionDisplayName(factionId);
+        snapshot.putString("displayName", (displayName != null) ? displayName : factionId);
         snapshot.putInt("cogs", FactionManager.getFactionAsset(factionId, "cogs"));
         snapshot.putInt("food", FactionManager.getFactionAsset(factionId, "food"));
         snapshot.putInt("mana", FactionManager.getFactionAsset(factionId, "mana"));
+        snapshot.putInt("villagerCount", VillagerFactionRegistry.getVillagerCountForFaction(factionId));
+        snapshot.putInt("controlledVillages", VillageControlManager.getControlledVillageCount(factionId));
 
-        ListTag namesList = new ListTag();
+        ListTag membersList = new ListTag();
         for (UUID memberUuid : FactionManager.getFactionMemberUUIDs(factionId)) {
-            namesList.add(StringTag.valueOf(resolveUsername(memberUuid, server)));
+            CompoundTag memberTag = new CompoundTag();
+            ServerPlayer onlineMember = (server != null) ? server.getPlayerList().getPlayer(memberUuid) : null;
+
+            memberTag.putUUID("uuid", memberUuid);
+            memberTag.putString("name", resolveUsername(memberUuid, server));
+            memberTag.putString("root", OriginManager.getDisplayRootName(memberUuid, onlineMember));
+            memberTag.putString("title", TitleManager.getResolvedTitleName(memberUuid, FactionTitle.MEMBER));
+            membersList.add(memberTag);
         }
-        snapshot.put("members", namesList);
+        snapshot.put("members", membersList);
+
+        ListTag villagerRosterList = new ListTag();
+        for (var entry : VillagerFactionRegistry.getVillagersForFaction(factionId).entrySet()) {
+            var record = entry.getValue();
+            CompoundTag villagerTag = new CompoundTag();
+            villagerTag.putUUID("uuid", entry.getKey());
+            villagerTag.putString("name", record.name());
+            villagerTag.putString("root", record.root());
+            villagerTag.putString("title", record.title());
+            villagerRosterList.add(villagerTag);
+        }
+        snapshot.put("villagerRoster", villagerRosterList);
         return snapshot;
     }
 

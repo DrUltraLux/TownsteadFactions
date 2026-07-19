@@ -1,79 +1,75 @@
 package com.drultralux.townsteadfactions.factions;
 
 import com.drultralux.townsteadfactions.integration.optional.CapitalsIntegration;
-import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
+import com.drultralux.townsteadfactions.titles.TitlePreferenceManager;
+import net.conczin.mca.entity.VillagerEntityMCA;
+import net.conczin.mca.registry.ProfessionsMCA;
+import java.util.UUID;
 
 /**
- * Resolves the display title shown for an entity, taking into account
- * whether the MCA Capitals mod is present and, if so, that entity's
- * Capitals-assigned rank.
+ * Resolves the display title for a UUID (player or NPC): a self-assigned
+ * cosmetic choice takes priority, then MCA Capitals' resolved nobility
+ * rank (if installed and applicable), then the faction's own base-tier
+ * fallback title.
  */
 public class TitleManager {
 
     /**
-     * Resolves the display title for an entity. If MCA Capitals is not
-     * loaded, the faction's own fallback title is used unchanged.
+     * Resolves the display title for a UUID.
      *
-     * @param entity the entity to resolve a title for
+     * @param entityUUID the UUID to resolve a title for (player or NPC)
      * @param fallbackLocalTitle the faction title to fall back to when
-     *                            Capitals integration doesn't apply
+     *                            neither a self-assigned choice nor a
+     *                            Capitals rank applies
      * @return the resolved display title
      */
-    public static String getResolvedTitleName(Entity entity, FactionTitle fallbackLocalTitle) {
-        if (!CapitalsIntegration.isModPresent()) {
-            return fallbackLocalTitle.getDisplayName();
+    public static String getResolvedTitleName(UUID entityUUID, FactionTitle fallbackLocalTitle) {
+        FactionTitle selfAssigned = TitlePreferenceManager.getSelfAssignedTitle(entityUUID);
+        if (selfAssigned != null) {
+            return selfAssigned.getDisplayName();
         }
 
-        if (entity instanceof ServerPlayer player) {
-            return resolvePlayerCapitalsTitle(player, fallbackLocalTitle);
-        }
-
-        return resolveNpcCapitalsTitle(entity, fallbackLocalTitle);
-    }
-
-    /**
-     * Resolves the Capitals-aware display title for a player.
-     *
-     * @param player the player to resolve a title for
-     * @param fallbackLocalTitle the faction title to fall back to
-     * @return the resolved display title
-     */
-    private static String resolvePlayerCapitalsTitle(ServerPlayer player, FactionTitle fallbackLocalTitle) {
-        if (CapitalsIntegration.isPlayerMonarch(player)) {
-            return FactionTitle.MONARCH.getDisplayName();
-        }
-
-        if (CapitalsIntegration.isEntityNoble(player)) {
-            return FactionTitle.NOBLE.getDisplayName();
-        }
-
-        if (fallbackLocalTitle == FactionTitle.LEADER || fallbackLocalTitle == FactionTitle.SOLDIER) {
-            return FactionTitle.KNIGHT.getDisplayName();
-        }
-
-        return FactionTitle.COMMONER.getDisplayName();
-    }
-
-    /**
-     * Resolves the Capitals-aware display title for a non-player entity.
-     *
-     * @param npc the entity to resolve a title for
-     * @param fallbackLocalTitle the faction title to fall back to
-     * @return the resolved display title
-     */
-    private static String resolveNpcCapitalsTitle(Entity npc, FactionTitle fallbackLocalTitle) {
-        if (CapitalsIntegration.isEntityNoble(npc)) {
-            return FactionTitle.NOBLE.getDisplayName();
-        }
-
-        if (fallbackLocalTitle == FactionTitle.SOLDIER) {
-            if (CapitalsIntegration.isGuardNpc(npc)) {
-                return FactionTitle.KNIGHT.getDisplayName();
+        if (CapitalsIntegration.isModPresent()) {
+            FactionTitle capitalsTitle = CapitalsIntegration.resolveTitle(entityUUID);
+            if (capitalsTitle != null) {
+                return capitalsTitle.getDisplayName();
             }
-            return FactionTitle.SOLDIER.getDisplayName(); // Archer fallback target
+            return FactionTitle.COMMONER.getDisplayName();
         }
 
-        return FactionTitle.COMMONER.getDisplayName();
+        return fallbackLocalTitle.getDisplayName();
+    }
+
+    /**
+     * Resolves the display title for an MCA villager: an earned Capitals
+     * nobility rank takes priority if one exists and outranks Commoner;
+     * otherwise, Guard/Archer profession maps to a military title
+     * (Archers are always Soldiers; Guards are Knights if Capitals is
+     * present, otherwise Soldiers); otherwise, falls back to Commoner
+     * (Capitals present) or Villager (no Capitals).
+     *
+     * @param villager the villager to resolve a title for
+     * @return the resolved display title
+     */
+    public static String getResolvedVillagerTitle(VillagerEntityMCA villager) {
+        UUID villagerUUID = villager.getUUID();
+        boolean capitalsPresent = CapitalsIntegration.isModPresent();
+
+        if (capitalsPresent) {
+            FactionTitle capitalsTitle = CapitalsIntegration.resolveTitle(villagerUUID);
+            if (capitalsTitle != null && capitalsTitle != FactionTitle.COMMONER) {
+                return capitalsTitle.getDisplayName();
+            }
+        }
+
+        var profession = villager.getVillagerData().getProfession();
+        if (profession == ProfessionsMCA.ARCHER) {
+            return FactionTitle.SOLDIER.getDisplayName();
+        }
+        if (profession == net.conczin.mca.registry.ProfessionsMCA.GUARD) {
+            return (capitalsPresent ? FactionTitle.KNIGHT : FactionTitle.SOLDIER).getDisplayName();
+        }
+
+        return (capitalsPresent ? FactionTitle.COMMONER : FactionTitle.VILLAGER).getDisplayName();
     }
 }

@@ -6,6 +6,12 @@ import com.drultralux.townsteadfactions.network.FactionPacketManager;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import com.drultralux.townsteadfactions.network.FactionPacketActions;
+import com.drultralux.townsteadfactions.titles.TitlePreferenceManager;
+import com.drultralux.townsteadfactions.territory.VillageControlManager;
+import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
+import net.conczin.mca.server.world.data.Village;
+import net.conczin.mca.server.world.data.VillageManager;
+import net.minecraft.server.level.ServerLevel;
 import com.mojang.authlib.GameProfile;
 import net.minecraft.commands.arguments.GameProfileArgument;
 import net.minecraft.nbt.CompoundTag;
@@ -17,6 +23,8 @@ import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -38,6 +46,14 @@ public class FactionCommands {
 
         // --- PLAYER BRANCH (all permission levels) ---
 
+        var villageStatusNode = Commands.literal("village")
+                .then(Commands.literal("status")
+                        .executes(context -> executeVillageStatus(context.getSource()))
+                );
+
+        factionsRoot.then(villageStatusNode);
+        shortRoot.then(villageStatusNode);
+
         var displayNode = Commands.literal("display")
                 .executes(context -> executeDisplay(context.getSource()));
 
@@ -54,6 +70,13 @@ public class FactionCommands {
                         .requires(source -> source.hasPermission(2))
                         .executes(context -> executeResetLayoutPlayer(context.getSource(), GameProfileArgument.getGameProfiles(context, "player")))
                 );
+        var titleNode = Commands.literal("title")
+                .then(Commands.literal("soldier").executes(context -> executeSetTitle(context.getSource(), FactionTitle.SOLDIER)))
+                .then(Commands.literal("knight").executes(context -> executeSetTitle(context.getSource(), FactionTitle.KNIGHT)))
+                .then(Commands.literal("reset").executes(context -> executeResetTitle(context.getSource())));
+
+        factionsRoot.then(titleNode);
+        shortRoot.then(titleNode);
 
         factionsRoot.then(resetLayoutNode);
         shortRoot.then(resetLayoutNode);
@@ -154,6 +177,7 @@ public class FactionCommands {
                     "\n §7Assigned Faction: §a" + factionDisplay), false);
             return 1;
         } catch (Exception e) {
+            LogManager.error("Failed to execute /factions display", e);
             source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
             return 0;
         }
@@ -177,6 +201,7 @@ public class FactionCommands {
             source.sendSuccess(() -> Component.literal("§aSuccessfully updated and re-synchronized faction alignments against config states."), false);
             return 1;
         } catch (Exception e) {
+            LogManager.error("Failed to execute /factions update", e);
             source.sendFailure(Component.literal("Failed to complete forced profile update checkpoint maps."));
             return 0;
         }
@@ -270,6 +295,7 @@ public class FactionCommands {
             source.sendSuccess(() -> Component.literal("§aYour faction dashboard layout will reset to defaults next time you open it."), false);
             return 1;
         } catch (Exception e) {
+            LogManager.error("Failed to execute /factions resetlayout", e);
             source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
             return 0;
         }
@@ -316,6 +342,111 @@ public class FactionCommands {
         }
         source.sendSuccess(() -> Component.literal("§a[Admin] Triggered a global faction dashboard layout reset for all players."), true);
         return 1;
+    }
+
+    /**
+     * Handles {@code /factions title <soldier|knight>}: sets the
+     * executing player's self-assigned cosmetic title. Purely cosmetic —
+     * has no functional effect.
+     *
+     * @param source the command source
+     * @param title the cosmetic title to assign
+     * @return {@code 1} on success, {@code 0} if not run by a player
+     */
+    private static int executeSetTitle(CommandSourceStack source, FactionTitle title) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            TitlePreferenceManager.setSelfAssignedTitle(player.getUUID(), title);
+            source.sendSuccess(() -> Component.literal("§aYour faction title is now set to: " + title.getDisplayName()), false);
+            return 1;
+        } catch (Exception e) {
+            LogManager.error("Failed to execute /factions title", e);
+            source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
+            return 0;
+        }
+    }
+
+    /**
+     * Handles {@code /factions title reset}: clears the executing
+     * player's self-assigned title, reverting to the computed default.
+     *
+     * @param source the command source
+     * @return {@code 1} on success, {@code 0} if not run by a player
+     */
+    private static int executeResetTitle(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            TitlePreferenceManager.setSelfAssignedTitle(player.getUUID(), null);
+            source.sendSuccess(() -> Component.literal("§aYour faction title has been reset to the default."), false);
+            return 1;
+        } catch (Exception e) {
+            LogManager.error("Failed to execute /factions title reset", e);
+            source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
+            return 0;
+        }
+    }
+
+    /**
+     * Handles {@code /factions village status}: reports the executing
+     * player's current village's resident count, per-faction population
+     * breakdown, and control state. Debug/verification tool for the
+     * census system.
+     *
+     * @param source the command source
+     * @return {@code 1} on success, {@code 0} if not run by a player, or no village found
+     */
+    private static int executeVillageStatus(CommandSourceStack source) {
+        try {
+            ServerPlayer player = source.getPlayerOrException();
+            ServerLevel level = player.serverLevel();
+
+            Village found = null;
+            for (Village village : VillageManager.get(level)) {
+                if (village.getBox().isInside(player.blockPosition())) {
+                    found = village;
+                    break;
+                }
+            }
+
+            if (found == null) {
+                source.sendFailure(Component.literal("You aren't currently standing in a known village."));
+                return 0;
+            }
+
+            String villageKey = level.dimension().location() + ":" + found.getId();
+
+            Map<String, Integer> tally = new java.util.HashMap<>();
+            for (var resident : found.getResidents(level)) {
+                String factionId = VillagerFactionRegistry.getVillagerFaction(resident.getUUID());
+                if (factionId != null) {
+                    tally.merge(factionId, 1, Integer::sum);
+                }
+            }
+
+            StringBuilder breakdown = new StringBuilder();
+            tally.forEach((factionId, count) -> breakdown.append("\n §7- §f").append(factionId).append(": §b").append(count));
+
+            String controller = VillageControlManager.getControllingFaction(villageKey);
+            boolean contested = VillageControlManager.isContested(villageKey);
+            List<String> contestedFactions = VillageControlManager.getContestedFactions(villageKey);
+
+            String controlLine = contested
+                    ? "§eContested between: " + String.join(", ", contestedFactions)
+                    : (controller != null ? "§aControlled by: " + controller : "§7Uncontrolled");
+
+            final Village finalFound = found;
+            source.sendSuccess(() -> Component.literal(
+                    "§6=== Village Status ===" +
+                            "\n §7Population: §f" + finalFound.getPopulation() +
+                            "\n §7Faction breakdown:" + breakdown +
+                            "\n " + controlLine
+            ), false);
+            return 1;
+        } catch (Exception e) {
+            LogManager.error("Failed to execute /factions village status", e);
+            source.sendFailure(Component.literal("This command can only be executed by a live player in-game."));
+            return 0;
+        }
     }
 
     /** The resource math operations supported by the admin commands. */

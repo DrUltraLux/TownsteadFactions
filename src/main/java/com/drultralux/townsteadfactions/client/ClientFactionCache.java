@@ -1,5 +1,6 @@
 package com.drultralux.townsteadfactions.client;
 
+import com.drultralux.townsteadfactions.factions.FactionTitle;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
 import com.drultralux.townsteadfactions.config.ModConfig;
@@ -60,9 +61,6 @@ public class ClientFactionCache {
         int serverResetVersion = nbt.getInt("serverLayoutResetVersion");
         int lastAppliedResetVersion = ModConfig.CLIENT.getInteger("lastAppliedServerResetVersion", 0);
         if (serverResetVersion > lastAppliedResetVersion) {
-            // Bundled into the regular sync payload (rather than a dedicated packet) since it's
-            // one int and only needs checking once per login — catches players who were offline
-            // when an admin triggered a global reset.
             ScreenLayoutSaver.resetToDefaults();
             ScreenLayoutSaver.saveLastAppliedServerResetVersion(serverResetVersion);
             LogManager.debug("Applied server-triggered faction dashboard layout reset (version " + serverResetVersion + ").");
@@ -111,13 +109,33 @@ public class ClientFactionCache {
         data.cogs = factionTag.getInt("cogs");
         data.food = factionTag.getInt("food");
         data.mana = factionTag.getInt("mana");
+        data.villagerCount = factionTag.getInt("villagerCount");
+        data.controlledVillages = factionTag.getInt("controlledVillages");
 
         if (factionTag.contains("members", 9)) { // 9 is ListTag
-            ListTag namesList = factionTag.getList("members", 8); // 8 is StringTag type identifier
-            for (int i = 0; i < namesList.size(); i++) {
-                String realUsername = namesList.getString(i);
-                // Store using a reproducible placeholder UUID derived from the username
-                data.roster.put(UUID.nameUUIDFromBytes(realUsername.getBytes()), realUsername);
+            ListTag membersList = factionTag.getList("members", 10); // 10 is CompoundTag type identifier
+            for (int i = 0; i < membersList.size(); i++) {
+                CompoundTag memberTag = membersList.getCompound(i);
+                if (memberTag.hasUUID("uuid")) {
+                    UUID memberUuid = memberTag.getUUID("uuid");
+                    String memberName = memberTag.contains("name", 8) ? memberTag.getString("name") : "Unknown Member";
+                    String memberRoot = memberTag.contains("root", 8) ? memberTag.getString("root") : "Unknown";
+                    String memberTitle = memberTag.contains("title", 8) ? memberTag.getString("title") : FactionTitle.MEMBER.getDisplayName();
+                    data.roster.put(memberUuid, new RosterEntry(memberName, memberRoot, memberTitle));
+                }
+            }
+        }
+        if (factionTag.contains("villagerRoster", 9)) { // 9 is ListTag
+            ListTag villagerList = factionTag.getList("villagerRoster", 10); // 10 is CompoundTag
+            for (int i = 0; i < villagerList.size(); i++) {
+                CompoundTag villagerTag = villagerList.getCompound(i);
+                if (villagerTag.hasUUID("uuid")) {
+                    UUID villagerUuid = villagerTag.getUUID("uuid");
+                    String vName = villagerTag.contains("name", 8) ? villagerTag.getString("name") : "Unknown Villager";
+                    String vRoot = villagerTag.contains("root", 8) ? villagerTag.getString("root") : "Unknown";
+                    String vTitle = villagerTag.contains("title", 8) ? villagerTag.getString("title") : FactionTitle.VILLAGER.getDisplayName();
+                    data.villagerRoster.put(villagerUuid, new RosterEntry(vName, vRoot, vTitle));
+                }
             }
         }
         return data;
@@ -183,7 +201,26 @@ public class ClientFactionCache {
         /** The faction's current mana balance. */
         public int mana;
 
-        /** Member display names, keyed by a UUID derived from the username. */
-        public final Map<UUID, String> roster = new HashMap<>();
+        /** The faction's currently assigned villager population. */
+        public int villagerCount;
+
+        /** The number of villages this faction currently controls. */
+        public int controlledVillages;
+
+        /** Member roster entries, keyed by UUID. */
+        public final Map<UUID, RosterEntry> roster = new HashMap<>();
+
+        /** Villager roster entries, keyed by UUID. */
+        public final Map<UUID, RosterEntry> villagerRoster = new HashMap<>();
     }
+
+    /**
+     * A single roster member's display information: their name, origin,
+     * and resolved title.
+     *
+     * @param name the member's display name
+     * @param root the member's origin display name (e.g. "High Elf"), or "Unknown"
+     * @param title the member's resolved faction title (e.g. "Leader", "Sir")
+     */
+    public record RosterEntry(String name, String root, String title) {}
 }

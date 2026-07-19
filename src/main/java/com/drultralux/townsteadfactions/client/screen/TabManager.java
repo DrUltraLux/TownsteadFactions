@@ -2,6 +2,7 @@ package com.drultralux.townsteadfactions.client.screen;
 
 import com.drultralux.townsteadfactions.client.screen.widget.DraggableWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.TabPanelWidget;
+import com.drultralux.townsteadfactions.utils.LogManager;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
@@ -314,11 +315,23 @@ public final class TabManager {
     public static boolean loadFromEncoded(List<String> encodedTabs) {
         tabs.clear();
         for (String entry : encodedTabs) {
-            if (entry == null || !entry.contains(";")) continue;
-            String[] tokens = entry.split(";", 2);
-            if (tokens.length >= 2 && !tokens[0].trim().isEmpty()) {
-                tabs.add(new TabPanelWidget(tokens[0].trim(), tokens[1].trim()));
+            if (entry == null || !entry.contains(";")) {
+                LogManager.warn("Skipping malformed saved tab entry (expected 'id;title'): '" + entry + "'");
+                continue;
             }
+            String[] tokens = entry.split(";", 2);
+            if (tokens.length < 2 || tokens[0].trim().isEmpty()) {
+                LogManager.warn("Skipping malformed saved tab entry (expected 'id;title'): '" + entry + "'");
+                continue;
+            }
+
+            String tabId = tokens[0].trim();
+            if (findTab(tabId) != null) {
+                LogManager.warn("Skipping duplicate saved tab entry with ID '" + tabId + "' — a tab with this ID was already loaded.");
+                continue;
+            }
+
+            tabs.add(new TabPanelWidget(tabId, tokens[1].trim()));
         }
         if (!tabs.isEmpty()) {
             activeTabId = tabs.get(0).getId();

@@ -150,16 +150,46 @@ public class ScreenLayoutSaver {
 
     /**
      * Updates a single value in the client config registry by key, if a
-     * config value exists for that key.
+     * config value exists for that key and the given value's runtime type
+     * matches what that key currently holds.
      *
      * @param key the config key to update
      * @param value the new value to set
      * @param <T> the type of the config value
      */
-    @SuppressWarnings("unchecked")
     private static <T> void setAgnosticValue(String key, T value) {
-        if (ModConfig.CLIENT.valuesRegistry.containsKey(key)) {
-            ((ModConfigSpec.ConfigValue<T>) ModConfig.CLIENT.valuesRegistry.get(key)).set(value);
+        ModConfigSpec.ConfigValue<?> configValue = ModConfig.CLIENT.valuesRegistry.get(key);
+        if (configValue != null) {
+            applyIfTypeMatches(configValue, value, key);
         }
+    }
+
+    /**
+     * Applies {@code value} to {@code configValue} only if {@code value}'s
+     * runtime type matches the type currently held by {@code configValue}.
+     * Captures {@code configValue}'s type parameter so the cast below is
+     * provably safe, rather than a blind unchecked cast.
+     *
+     * @param configValue the config value to update
+     * @param value the new value to apply
+     * @param key the config key, used only for the mismatch log message
+     * @param <T> the config value's captured type
+     */
+    private static <T> void applyIfTypeMatches(ModConfigSpec.ConfigValue<T> configValue, Object value, String key) {
+        T currentValue = configValue.get();
+        if (currentValue != null && value != null && !currentValue.getClass().isInstance(value)) {
+            LogManager.warn("Config type mismatch for key '" + key + "': expected " +
+                    currentValue.getClass().getSimpleName() + " but got " +
+                    value.getClass().getSimpleName() + ". Skipping this write to avoid corrupting the config.");
+            return;
+        }
+
+        // Safe: verified above that `value` is an instance of the same runtime type
+        // currently held by this ConfigValue<T>. The unchecked cast is unavoidable —
+        // Java's generics can't statically correlate `T` with a runtime-only check —
+        // but the check above is what actually guarantees safety here, not the cast.
+        @SuppressWarnings("unchecked")
+        T typedValue = (T) value;
+        configValue.set(typedValue);
     }
 }

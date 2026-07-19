@@ -3,12 +3,13 @@ package com.drultralux.townsteadfactions.factions;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
+import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.NbtUtils;
-
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -26,7 +27,7 @@ public class FactionManager {
     private static final FactionManager INSTANCE = new FactionManager();
 
     /** All currently active factions, keyed by faction ID. */
-    private final Map<String, Faction> activeFactions = new HashMap<>();
+    private final Map<String, Faction> activeFactions = new LinkedHashMap<>();
 
     /** The currently bound world save data instance, or {@code null} if none is bound. */
     private static FactionSavedData activeStorageInstance = null;
@@ -48,7 +49,7 @@ public class FactionManager {
     public void initializeFactionsFromConfig() {
         LogManager.info("Initializing server factions from configuration mappings directly...");
         Map<String, List<String>> configMap = ModConfig.FACTIONS.getFactionsMap();
-        Map<String, Faction> freshFactions = new HashMap<>();
+        Map<String, Faction> freshFactions = new LinkedHashMap<>();
 
         for (Map.Entry<String, List<String>> entry : configMap.entrySet()) {
             String factionId = entry.getKey();
@@ -67,6 +68,8 @@ public class FactionManager {
                 Faction factionInstance = new Faction(cleanFactionId, cleanFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
                 factionInstance.setValidOrigins(validOrigins);
                 freshFactions.put(cleanFactionId, factionInstance);
+            } else {
+                LogManager.warn("Skipping faction '" + cleanFactionId + "' from config: none of its configured origins resolved to a valid Townstead root ID. Check factions.json for typos.");
             }
         }
         this.activeFactions.clear();
@@ -153,15 +156,25 @@ public class FactionManager {
 
                 Faction activeFaction = this.activeFactions.get(configFactionId);
                 if (activeFaction != null) {
-                    // Update valid origins in case roots were moved between existing factions
-                    activeFaction.setValidOrigins(validOrigins);
-                    LogManager.debug("Successfully reconciled updated config origins mapping for faction: " + configFactionId);
-                } else {
+                    if (validOrigins.isEmpty()) {
+                        // A faction must always have at least one valid origin. If reconciling
+                        // config leaves it with none (e.g. a typo, or the origin no longer
+                        // exists), prune it rather than leaving an invalid faction in place.
+                        this.activeFactions.remove(configFactionId);
+                        LogManager.warn("Pruned faction '" + configFactionId + "': none of its configured origins resolved to a valid Townstead root ID. Check factions.json for typos.");
+                    } else {
+                        // Update valid origins in case roots were moved between existing factions
+                        activeFaction.setValidOrigins(validOrigins);
+                        LogManager.debug("Successfully reconciled updated config origins mapping for faction: " + configFactionId);
+                    }
+                } else if (!validOrigins.isEmpty()) {
                     // A faction exists in config but wasn't in the save file — create it fresh
                     Faction newFaction = new Faction(configFactionId, configFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
                     newFaction.setValidOrigins(validOrigins);
                     this.activeFactions.put(configFactionId, newFaction);
                     LogManager.info("Config Sync: Generated a new tracking block for config entry missing from file: " + configFactionId);
+                } else {
+                    LogManager.warn("Skipping new faction '" + configFactionId + "' from config: none of its configured origins resolved to a valid Townstead root ID. Check factions.json for typos.");
                 }
             }
         }
@@ -186,6 +199,8 @@ public class FactionManager {
             }
             this.activeFactions.get(cleanId).addMember(playerUUID);
             LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
+        } else {
+            LogManager.warn("Attempted to assign player " + playerUUID + " to unknown faction ID: '" + cleanId + "'");
         }
     }
 
@@ -215,6 +230,7 @@ public class FactionManager {
      * @return the resource balance, or {@code 0} if the player has no faction or the type is unrecognized
      */
     public static int getPlayerFactionAsset(UUID playerUUID, String assetType) {
+        if (assetType == null) return 0;
         String factionId = getPlayerFactionId(playerUUID);
         if (factionId == null) return 0;
         Faction faction = getInstance().getActiveFactions().get(factionId);
@@ -344,6 +360,35 @@ public class FactionManager {
     }
 
     /**
+     * Returns the ID of the first configured faction, by {@code factions.json}
+     * declaration order — used as a fallback destination for players whose
+     * origin is valid but not explicitly assigned to any faction.
+     *
+     * <p>Deliberately consults {@link ModConfig#FACTIONS} rather than this
+     * manager's own {@code activeFactions} map for ordering: factions
+     * loaded from saved world NBT don't reliably preserve insertion order
+     * (NBT compounds make no such guarantee), so only the config file
+     * itself is a trustworthy source of "which faction is first."</p>
+     *
+     * @return the first configured faction's ID that's currently active,
+     *         or {@code null} if none are (no factions configured or active)
+     */
+    public static String getFallbackFactionId() {
+        for (String configFactionId : ModConfig.FACTIONS.getFactionsMap().keySet()) {
+            String cleanId = configFactionId.trim();
+            if (getInstance().getActiveFactions().containsKey(cleanId)) {
+                return cleanId;
+            }
+        }
+
+        // Last resort: no config-ordered match found (e.g. a faction exists only
+        // in saved data with no corresponding config entry). Fall back to
+        // whatever's first in the active map rather than returning null.
+        var iterator = getInstance().getActiveFactions().keySet().iterator();
+        return iterator.hasNext() ? iterator.next() : null;
+    }
+
+    /**
      * Reads a player's assigned faction display name, without exposing the
      * underlying {@link Faction} instance.
      *
@@ -385,6 +430,11 @@ public class FactionManager {
 
         String targetResource = rawResource.toLowerCase().trim();
         String op = operation.toUpperCase().trim();
+
+        if (!op.equals("ADD") && !op.equals("SUB") && !op.equals("SET")) {
+            LogManager.warn("Rejected resource math request with unrecognized operation: '" + operation + "' (expected ADD, SUB, or SET)");
+            return 0;
+        }
 
         switch (targetResource) {
             case "cogs", "cog" -> {
@@ -468,9 +518,11 @@ public class FactionManager {
         for (Faction faction : activeMap.values()) {
             if (faction != null) {
                 int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;
+                int villagerCount = VillagerFactionRegistry.getVillagerCountForFaction(faction.getId());
                 listBuilder.append("\n §7• §f").append(faction.getId())
                         .append(" §7-> Title: §a").append(faction.getDisplayName())
-                        .append(" §7(Members: §b").append(memberCount).append("§7)");
+                        .append(" §7(Players: §b").append(memberCount)
+                        .append(" §7| Villagers: §d").append(villagerCount).append("§7)");
             }
         }
         return listBuilder.toString();

@@ -165,6 +165,56 @@ public class OriginManager {
     }
 
     /**
+     * Resolves the faction ID that a root ID is explicitly assigned to in
+     * {@code factions.json}, if any.
+     *
+     * @param cleanedRootId the trimmed root ID to resolve
+     * @return the matching faction ID, or {@code null} if none is configured
+     */
+    private static String resolveConfiguredFaction(String cleanedRootId) {
+        for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
+            List<String> allowedOrigins = entry.getValue();
+            if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Resolves the faction a root ID should belong to: an explicit
+     * {@code factions.json} assignment if one exists, otherwise the
+     * fallback faction (first configured faction, by declaration order).
+     * Entity-agnostic — used by both player and villager assignment paths.
+     *
+     * @param cleanedRootId the trimmed root ID to resolve; an empty string
+     *                       is treated as having no explicit assignment
+     * @return the resolved faction ID, or {@code null} if no faction is
+     *         configured at all (nothing to fall back to)
+     */
+    public static String resolveFactionForRootId(String cleanedRootId) {
+        String explicit = (cleanedRootId != null && !cleanedRootId.isEmpty()) ? resolveConfiguredFaction(cleanedRootId) : null;
+        return (explicit != null) ? explicit : FactionManager.getFallbackFactionId();
+    }
+
+    /**
+     * Assigns a player to the fallback faction (the first configured
+     * faction, by config order), used when a player has no usable origin
+     * to match against factions.json — either no origin at all, or one
+     * that isn't assigned to any faction.
+     *
+     * @param player the player to assign
+     */
+    private static void assignFallbackFaction(ServerPlayer player) {
+        String fallbackFactionId = FactionManager.getFallbackFactionId();
+        if (fallbackFactionId == null) {
+            LogManager.error("Player " + player.getName().getString() + " has no usable origin, and no fallback faction exists because no factions are currently configured. This player cannot be assigned to a faction.");
+            return;
+        }
+        FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), fallbackFactionId);
+    }
+
+    /**
      * Finds and assigns the faction configured to accept the given root ID,
      * if one exists.
      *
@@ -172,19 +222,49 @@ public class OriginManager {
      * @param cleanedRootId the player's current, trimmed root ID
      */
     private static void assignFactionForRoot(ServerPlayer player, String cleanedRootId) {
-        String targetFactionKey = null;
+        String targetFactionKey = resolveConfiguredFaction(cleanedRootId);
 
-        for (Map.Entry<String, List<String>> entry : ModConfig.FACTIONS.getFactionsMap().entrySet()) {
-            List<String> allowedOrigins = entry.getValue();
-            if (allowedOrigins != null && allowedOrigins.contains(cleanedRootId)) {
-                targetFactionKey = entry.getKey();
-                break;
+        if (targetFactionKey == null) {
+            String fallbackFactionId = FactionManager.getFallbackFactionId();
+            if (fallbackFactionId == null) {
+                LogManager.error("Player " + player.getName().getString() + " has origin '" + getCleanName(cleanedRootId) +
+                        "' (" + cleanedRootId + "), which is not assigned to any faction, and no fallback faction " +
+                        "exists because no factions are currently configured. This player cannot be assigned to a faction.");
+                return;
             }
+            LogManager.warn("Player " + player.getName().getString() + " has origin '" + getCleanName(cleanedRootId) +
+                    "' (" + cleanedRootId + "), which is not assigned to any faction in factions.json. " +
+                    "Falling back to faction '" + fallbackFactionId + "'. Update factions.json to assign this origin explicitly.");
+            targetFactionKey = fallbackFactionId;
         }
 
-        if (targetFactionKey != null) {
-            LogManager.info("Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
-            FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
+        LogManager.info("Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
+        FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
+    }
+
+    /**
+     * Resolves a display-ready origin name for a player, for use in
+     * roster displays. Prefers the player's live root if they're online;
+     * falls back to the last known root cached this session (see the
+     * token-ring origin recheck) if they're offline.
+     *
+     * @param playerUUID the player's UUID
+     * @param onlinePlayer the player's live {@code ServerPlayer} if
+     *                      currently online, or {@code null} if offline
+     * @return the player's clean origin display name, or {@code "Unknown"}
+     *         if no root could be resolved either way
+     */
+    public static String getDisplayRootName(UUID playerUUID, ServerPlayer onlinePlayer) {
+        String rootId = null;
+        if (onlinePlayer != null) {
+            rootId = PlayerRoot.getRootId(onlinePlayer);
         }
+        if (rootId == null || rootId.isEmpty()) {
+            rootId = lastKnownRootIds.get(playerUUID);
+        }
+        if (rootId == null || rootId.isEmpty()) {
+            return "Unknown";
+        }
+        return getCleanName(rootId);
     }
 }

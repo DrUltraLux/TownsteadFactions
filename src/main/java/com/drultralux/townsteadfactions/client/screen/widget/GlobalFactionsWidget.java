@@ -69,9 +69,10 @@ public class GlobalFactionsWidget extends DraggableWidget {
             // Highlight the row if it represents the player's own faction
             boolean isOwnFaction = faction.id.equalsIgnoreCase(currentFactionId);
 
+            int totalCount = faction.roster.size() + faction.villagerRoster.size();
             String rowString = isOwnFaction
-                    ? "§a✔ §e" + faction.name + " §7(" + faction.roster.size() + ")"
-                    : "§7• §f" + faction.name + " §7(" + faction.roster.size() + ")";
+                    ? "§a✔ §e" + faction.name + " §7(" + totalCount + ")"
+                    : "§7• §f" + faction.name + " §7(" + totalCount + ")";
 
             graphics.drawString(this.font, Component.literal(rowString), this.x + 12, currentYOffset, FactionPalette.getBarColor("text_blue"), true);
 

@@ -18,6 +18,7 @@ public class ResourceDisplayWidget extends DraggableWidget {
 
     /** Text renderers for each section header and label. */
     private final TextLineValueRenderer powerHeader, resourcesHeader, airshipsLabel, treasuryLabel, foodLabel, manaLabel;
+    private final TextLineValueRenderer territoryLabel;
 
     /** Bar renderers for each resource's fill level. */
     private final ColorBarValueRenderer powerBar, airshipsBar, treasuryBar, foodBar, manaBar;
@@ -42,6 +43,7 @@ public class ResourceDisplayWidget extends DraggableWidget {
         this.treasuryLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Treasury:", FactionPalette.getBarColor("gold"));
         this.foodLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Food Supplies", FactionPalette.getBarColor("food"));
         this.manaLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Mana Stockpile", FactionPalette.getBarColor("mana"));
+        this.territoryLabel = new TextLineValueRenderer(Minecraft.getInstance().font, "Territory", FactionPalette.getBarColor("text_pink"));
 
         this.powerBar = new ColorBarValueRenderer(FactionPalette.getBarColor("power"));
         this.airshipsBar = new ColorBarValueRenderer(FactionPalette.getBarColor("ships"));
@@ -108,6 +110,14 @@ public class ResourceDisplayWidget extends DraggableWidget {
 
         this.airshipsLabel.render(graphics, col1X, this.y + 44, 0.0F);
         this.airshipsBar.render(graphics, col1X, this.y + 54, shipsPercent);
+
+        ClientFactionCache.ClientFactionData factionData = ClientFactionCache.getCachedFactions().get(activeId);
+        int villagerCount = (factionData != null) ? factionData.villagerCount : 0;
+        int controlledVillages = (factionData != null) ? factionData.controlledVillages : 0;
+
+        this.territoryLabel.render(graphics, col1X, this.y + 70, 0.0F);
+        graphics.drawString(this.font, Component.literal("Villagers: " + villagerCount), col1X, this.y + 82, FactionPalette.getBarColor("text_pink"), false);
+        graphics.drawString(this.font, Component.literal("Villages: " + controlledVillages), col1X, this.y + 92, FactionPalette.getBarColor("text_pink"), false);
 
         // --- COLUMN 2: RIGHT SIDE (STATISTICS & STORAGE) ---
         int col2X = this.x + 115;

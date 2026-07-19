@@ -55,6 +55,15 @@ public class LogManager {
     }
 
     /**
+     * Logs an error message with no associated exception.
+     *
+     * @param message the message to log
+     */
+    public static void error(String message) {
+        LOGGER.error("[TownsteadFactions] CRITICAL ERROR: " + message);
+    }
+
+    /**
      * Logs a debug message, but only if debug logging is currently enabled.
      *
      * @param message the message to log

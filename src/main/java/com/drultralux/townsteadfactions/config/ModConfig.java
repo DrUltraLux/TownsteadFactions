@@ -13,6 +13,7 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Type;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -219,7 +220,7 @@ public class ModConfig {
     public static class FactionsConfigContainer {
 
         /** The currently loaded faction-to-origin mapping. */
-        private final Map<String, List<String>> factionsCache = new HashMap<>();
+        private final Map<String, List<String>> factionsCache = new LinkedHashMap<>();
 
         /** The default faction/origin data used to seed a fresh {@code factions.json}. */
         public final FactionConfigModel defaultModelData = new FactionConfigModel();

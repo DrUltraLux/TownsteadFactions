@@ -17,5 +17,7 @@ public class CommonConfigModel {
     public CommonConfigModel() {
         technicalSettings.put("enableDebugLogging", false);
         technicalSettings.put("maxDataSyncInterval", 20);
+        // Real-world seconds between village census sweeps (token-ring: one village checked per interval)
+        technicalSettings.put("villageCensusIntervalSeconds", 10);
     }
 }

@@ -134,8 +134,10 @@ sourceSets.main.resources { srcDir 'src/generated/resources' }
 
 
 dependencies {
+    implementation "maven.modrinth:1W98a849:YKhJZ85x"
+
     //implementation "com.aetherianartificer:townstead:0.7.5+1.21.1"
-    implementation name: 'townstead-b4-0.7.5+1.21.1'
+    implementation name: 'townstead-0.7.5+1.21.1'
 
     implementation "dev.marie.MariesLib:marieslib:${marieslib_version}"
 }
