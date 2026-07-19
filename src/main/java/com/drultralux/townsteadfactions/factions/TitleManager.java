@@ -29,7 +29,7 @@ public class TitleManager {
             return selfAssigned.getDisplayName();
         }
 
-        if (CapitalsIntegration.isModPresent()) {
+        if (CapitalsIntegration.isIntegrationFunctional()) {
             FactionTitle capitalsTitle = CapitalsIntegration.resolveTitle(entityUUID);
             if (capitalsTitle != null) {
                 return capitalsTitle.getDisplayName();

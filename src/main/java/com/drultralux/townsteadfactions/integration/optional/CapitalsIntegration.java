@@ -73,6 +73,23 @@ public class CapitalsIntegration {
     }
 
     /**
+     * Checks whether Capitals is not just present, but actually
+     * successfully integrated with — i.e. its internal API still matches
+     * what this class expects. Callers that make leadership/title
+     * decisions should check this, not {@link #isModPresent()}, so a
+     * broken integration (e.g. after a Capitals update changes its
+     * internals) cleanly falls back to base-tier behavior instead of
+     * silently locking everyone at Commoner.
+     *
+     * @return {@code true} if Capitals is present and its API is working
+     */
+    public static boolean isIntegrationFunctional() {
+        if (!isModPresent()) return false;
+        initReflection();
+        return reflectionAvailable;
+    }
+
+    /**
      * Resolves the reflection targets used by this class, if MCA Capitals
      * is present. Safe to call multiple times; only runs once. On any
      * failure, all cached method handles are reset so lookups fail closed
