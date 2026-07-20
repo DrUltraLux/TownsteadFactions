@@ -275,7 +275,7 @@ public class ModConfig {
                 FactionManager.trimAllActivityLogsToCap();
             }
 
-            if (CLIENT_SPEC.isLoaded()) {
+            if (COMMON_SPEC.isLoaded()) {
                 File subDir = new File(FMLPaths.CONFIGDIR.get().toFile(), "townsteadfactions");
                 if (!subDir.exists()) {
                     subDir.mkdirs();

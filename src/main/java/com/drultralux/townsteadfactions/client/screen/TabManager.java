@@ -158,6 +158,18 @@ public final class TabManager {
         return true;
     }
 
+    public static boolean removeTabDiscardingWidgets(String tabId) {
+        TabPanelWidget target = findTab(tabId);
+        if (target == null) return false;
+        if (!isProtectedTab(tabId) && getRegularTabCount() <= 1) return false;
+
+        tabs.remove(target);
+        if (tabId.equals(activeTabId)) {
+            activeTabId = tabs.isEmpty() ? null : tabs.get(0).getId();
+        }
+        return true;
+    }
+
     /**
      * Renames a tab.
      *
@@ -372,7 +384,7 @@ public final class TabManager {
             return true;
         }
         if (!shouldBeVisible && exists) {
-            removeTab(DEFAULT_TAB_LEADERSHIP);
+            removeTabDiscardingWidgets(DEFAULT_TAB_LEADERSHIP);
         }
         return false;
     }
