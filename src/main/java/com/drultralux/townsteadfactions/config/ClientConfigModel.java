@@ -58,6 +58,19 @@ public class ClientConfigModel {
         interfaceSettings.put("votingWidgetY", -30);
         interfaceSettings.put("votingWidgetTabId", "overview");
 
+        interfaceSettings.put("treasuryWidgetMinimized", false);
+        interfaceSettings.put("rosterWidgetMinimized", false);
+        interfaceSettings.put("globalWidgetMinimized", false);
+        interfaceSettings.put("avatarWidgetMinimized", false);
+        interfaceSettings.put("activityWidgetMinimized", false);
+        interfaceSettings.put("votingWidgetMinimized", false);
+
+        // New — these three didn't exist at all before, so villageMapWidget's position/tab could never persist:
+        interfaceSettings.put("villageMapWidgetX", -100);
+        interfaceSettings.put("villageMapWidgetY", 40);
+        interfaceSettings.put("villageMapWidgetTabId", "global");
+        interfaceSettings.put("villageMapWidgetMinimized", false);
+
         // Default tab order, as "ID;Display Name" pairs
         List<String> defaultTabOrder = new ArrayList<>();
         defaultTabOrder.add("overview;Overview");

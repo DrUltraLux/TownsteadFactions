@@ -16,6 +16,8 @@ import java.util.List;
 import java.util.Set;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
+import net.minecraft.nbt.NbtUtils;
+import net.minecraft.client.Minecraft;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -194,7 +196,7 @@ public class ClientFactionCache {
         if (voteTag.contains("votedUUIDs", 9)) { // 9 is ListTag
             ListTag votedList = voteTag.getList("votedUUIDs", 11); // 11 is IntArrayTag, how UUIDs are stored
             for (int i = 0; i < votedList.size(); i++) {
-                votedUUIDs.add(net.minecraft.nbt.NbtUtils.loadUUID(votedList.get(i)));
+                votedUUIDs.add(NbtUtils.loadUUID(votedList.get(i)));
             }
         }
 
@@ -202,7 +204,7 @@ public class ClientFactionCache {
         if (voteTag.contains("eligibleUUIDs", 9)) { // 9 is ListTag
             ListTag eligibleList = voteTag.getList("eligibleUUIDs", 11); // 11 is IntArrayTag
             for (int i = 0; i < eligibleList.size(); i++) {
-                eligibleUUIDs.add(net.minecraft.nbt.NbtUtils.loadUUID(eligibleList.get(i)));
+                eligibleUUIDs.add(NbtUtils.loadUUID(eligibleList.get(i)));
             }
         }
 
@@ -279,7 +281,7 @@ public class ClientFactionCache {
      * @return {@code true} if currently a leader
      */
     public static boolean isLocalPlayerLeader() {
-        var mc = net.minecraft.client.Minecraft.getInstance();
+        var mc = Minecraft.getInstance();
         if (mc.player == null) return false;
         ClientFactionData data = cachedFactions.get(assignedFactionId);
         if (data == null) return false;
@@ -395,6 +397,95 @@ public class ClientFactionCache {
             }
         }
         data.hasMoreLogHistory = nbt.getBoolean("hasMore");
+    }
+
+    /** The most recently received village map response, or {@code null} if none has arrived yet this session. */
+    private static VillageMapData cachedVillageMap = null;
+
+    /** Whether a village map request is currently outstanding, so the widget can show a loading state instead of spamming requests. */
+    private static boolean villageMapRequestPending = false;
+
+    /**
+     * A single village's map snapshot as received from the server: display
+     * name, world coordinates (from the village's real center, not the
+     * screen position), its index and the faction's total controlled-
+     * village count (for the prev/next arrows), and its vanilla-format
+     * packed color bytes.
+     *
+     * @param factionId the faction this village belongs to
+     * @param found whether a village was actually found at the requested index (false if the faction controls none, or it vanished mid-request)
+     * @param index this village's index into the faction's controlled-village list
+     * @param total how many villages the faction currently controls
+     * @param name the village's display name
+     * @param x the village's center x coordinate
+     * @param z the village's center z coordinate
+     * @param dimension the dimension the village is in
+     * @param colors the packed vanilla-format map color bytes, 128x128, or {@code null} if {@code found} is false
+     */
+    public record VillageMapData(String factionId, boolean found, boolean stale, int index, int total, String name, int x, int z, String dimension, byte[] colors) {}
+
+    /**
+     * Returns the most recently received village map response, if any.
+     *
+     * @return the cached village map data, or {@code null} if none has been received yet
+     */
+    public static VillageMapData getCachedVillageMap() {
+        return cachedVillageMap;
+    }
+
+    /**
+     * Whether a village map request is currently outstanding.
+     *
+     * @return {@code true} if a request has been sent but no response received yet
+     */
+    public static boolean isVillageMapRequestPending() {
+        return villageMapRequestPending;
+    }
+
+    /**
+     * Requests a faction's controlled village at a given index from the
+     * server, for the village map widget's prev/next navigation. The
+     * server clamps the index into range (wrapping), so callers can freely
+     * pass {@code index - 1} or {@code index + 1} without bounds-checking
+     * against a count the client may not have yet.
+     *
+     * @param factionId the faction whose controlled villages to page through
+     * @param index the index to request
+     */
+    public static void requestVillageMap(String factionId, int index) {
+        if (factionId == null) return;
+
+        CompoundTag requestNbt = new CompoundTag();
+        requestNbt.putString("factionId", factionId);
+        requestNbt.putInt("index", index);
+        villageMapRequestPending = true;
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_VILLAGE_MAP_REQUEST, requestNbt));
+    }
+
+    /**
+     * Applies a server-provided village map response to the cache.
+     *
+     * @param nbt the response data, or {@code null} to do nothing
+     */
+    public static void applyVillageMap(CompoundTag nbt) {
+        villageMapRequestPending = false;
+        if (nbt == null) return;
+
+        String factionId = nbt.getString("factionId");
+        int total = nbt.getInt("total");
+        boolean found = nbt.getBoolean("found");
+
+        if (!found) {
+            cachedVillageMap = new VillageMapData(factionId, false, false, 0, total, null, 0, 0, null, null);
+            return;
+        }
+
+        boolean stale = nbt.getBoolean("stale");
+        byte[] colors = nbt.contains("colors", 7) ? nbt.getByteArray("colors") : null; // 7 is ByteArrayTag
+        cachedVillageMap = new VillageMapData(
+                factionId, true, stale, nbt.getInt("index"), total,
+                nbt.getString("name"), nbt.getInt("x"), nbt.getInt("z"), nbt.getString("dimension"), colors
+        );
     }
 
     /**

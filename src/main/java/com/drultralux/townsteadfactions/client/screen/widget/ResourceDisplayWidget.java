@@ -111,9 +111,9 @@ public class ResourceDisplayWidget extends DraggableWidget {
         float foodPercent = Math.min(1.0F, Math.max(0.0F, (float) liveFood / 10.0F));
         float manaPercent = Math.min(1.0F, Math.max(0.0F, (float) liveMana / 10.0F));
 
-        LogManager.debug("Cache Diagnostic -> Cogs: {" + liveCogs + "}");
-        LogManager.debug("Cache Diagnostic -> Food: {" + liveFood + "}");
-        LogManager.debug("Cache Diagnostic -> Mana: {" + liveMana + "}");
+        //LogManager.debug("Cache Diagnostic -> Cogs: {" + liveCogs + "}");
+        //LogManager.debug("Cache Diagnostic -> Food: {" + liveFood + "}");
+        //LogManager.debug("Cache Diagnostic -> Mana: {" + liveMana + "}");
 
         // --- COLUMN 1: LEFT SIDE (POWER & AIRSHIPS) ---
         int col1X = this.x + 8;

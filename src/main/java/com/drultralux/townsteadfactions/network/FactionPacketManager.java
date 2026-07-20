@@ -11,10 +11,14 @@ import com.drultralux.townsteadfactions.integration.optional.CapitalsIntegration
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
 import com.drultralux.townsteadfactions.territory.VillageControlManager;
+import com.drultralux.townsteadfactions.territory.VillageMapManager;
 import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import com.drultralux.townsteadfactions.factions.ActivityLogEntry;
 import java.util.List;
 import java.util.Map;
+
+import com.drultralux.townsteadfactions.utils.LogManager;
+import net.minecraft.nbt.ByteArrayTag;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
@@ -124,6 +128,106 @@ public class FactionPacketManager {
         responseNbt.putBoolean("hasMore", hasMore);
 
         sendToPlayer(player, FactionPacketActions.FACTION_LOG_MORE, responseNbt);
+    }
+
+    /**
+     * Builds and sends a single controlled village's map snapshot (name,
+     * world coordinates, and vanilla-format color data) to a player, in
+     * response to a {@link FactionPacketActions#FACTION_VILLAGE_MAP_REQUEST}.
+     * Villages are addressed by index into the faction's sorted controlled-
+     * village list (see {@link VillageControlManager#getControlledVillageKeys})
+     * rather than by key directly, so the client's prev/next arrows can
+     * simply request index-1/index+1 without needing to know village keys
+     * itself.
+     *
+     * @param player the requesting player
+     * @param factionId the faction whose controlled villages to page through
+     * @param index the index into that faction's controlled-village list
+     */
+    public static void sendVillageMap(ServerPlayer player, String factionId, int index) {
+        if (player == null || factionId == null) return;
+        MinecraftServer server = player.getServer();
+        if (server == null) return;
+
+        List<String> villageKeys = VillageControlManager.getControlledVillageKeys(factionId);
+        CompoundTag responseNbt = new CompoundTag();
+        responseNbt.putString("factionId", factionId);
+        responseNbt.putInt("total", villageKeys.size());
+
+        if (villageKeys.isEmpty()) {
+            responseNbt.putBoolean("found", false);
+            sendToPlayer(player, FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, responseNbt);
+            return;
+        }
+
+        int clampedIndex = Math.floorMod(index, villageKeys.size());
+        String villageKey = villageKeys.get(clampedIndex);
+        VillageMapManager.ResolvedVillage resolved = VillageMapManager.resolve(server, villageKey);
+
+        VillageControlManager.CachedVillageMap cached = VillageControlManager.getCachedVillageMap(villageKey);
+        VillageMapManager.MapSnapshotResult snapshot = (resolved != null)
+                ? VillageMapManager.generateColorSnapshot(resolved.level(), resolved.village())
+                : null;
+
+        if (snapshot != null && snapshot.isReliable()) {
+            var center = resolved.village().getCenter();
+            String name = resolved.village().getName();
+            String dimension = resolved.level().dimension().location().toString();
+            VillageControlManager.cacheVillageMap(villageKey, name, center.getX(), center.getZ(), dimension, snapshot.colors());
+            LogManager.debug("Village map request for '" + villageKey + "' served live and cached (" + snapshot.noneCount() + " air pixels).");
+
+            responseNbt.putBoolean("found", true);
+            responseNbt.putBoolean("stale", false);
+            responseNbt.putInt("index", clampedIndex);
+            responseNbt.putString("name", name);
+            responseNbt.putInt("x", center.getX());
+            responseNbt.putInt("z", center.getZ());
+            responseNbt.putString("dimension", dimension);
+            responseNbt.put("colors", new ByteArrayTag(snapshot.colors()));
+            sendToPlayer(player, FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, responseNbt);
+            return;
+        }
+
+        if (cached != null) {
+            String reason = (snapshot == null) ? "village not resolvable live" : "live snapshot unreliable (" + snapshot.noneCount() + " air pixels)";
+            LogManager.debug("Village map request for '" + villageKey + "' served from cached fallback (" + reason + ").");
+
+            responseNbt.putBoolean("found", true);
+            responseNbt.putBoolean("stale", true);
+            responseNbt.putInt("index", clampedIndex);
+            responseNbt.putString("name", cached.name());
+            responseNbt.putInt("x", cached.x());
+            responseNbt.putInt("z", cached.z());
+            responseNbt.putString("dimension", cached.dimension());
+            responseNbt.put("colors", new ByteArrayTag(cached.colors()));
+            sendToPlayer(player, FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, responseNbt);
+            return;
+        }
+
+        if (snapshot != null) {
+            // No cache exists yet to fall back on, and this snapshot is unreliable — send it anyway
+            // (better than nothing on a first-ever view), but deliberately don't cache it, so it can't
+            // poison the cache for future requests.
+            var center = resolved.village().getCenter();
+            String name = resolved.village().getName();
+            String dimension = resolved.level().dimension().location().toString();
+            LogManager.debug("Village map request for '" + villageKey + "' served live but UNCACHED — unreliable (" + snapshot.noneCount() + " air pixels) with no prior cache to fall back on.");
+
+            responseNbt.putBoolean("found", true);
+            responseNbt.putBoolean("stale", false);
+            responseNbt.putInt("index", clampedIndex);
+            responseNbt.putString("name", name);
+            responseNbt.putInt("x", center.getX());
+            responseNbt.putInt("z", center.getZ());
+            responseNbt.putString("dimension", dimension);
+            responseNbt.put("colors", new ByteArrayTag(snapshot.colors()));
+            sendToPlayer(player, FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, responseNbt);
+            return;
+        }
+
+        LogManager.debug("Village map request for '" + villageKey + "' failed: village not resolvable live, and no cached fallback exists.");
+        responseNbt.putBoolean("found", false);
+        sendToPlayer(player, FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, responseNbt);
     }
 
     /**

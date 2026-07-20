@@ -31,4 +31,8 @@ public final class FactionPacketActions {
     public static final String FACTION_LEADERSHIP_NOMINATE = "faction_leadership_nominate";
     /** C2S: a leader voluntarily resigns their role. */
     public static final String FACTION_LEADERSHIP_RESIGN = "faction_leadership_resign";
+    /** C2S: request a controlled village's map snapshot by index, for the village map widget. */
+    public static final String FACTION_VILLAGE_MAP_REQUEST = "faction_village_map_request";
+    /** S2C: a village's map snapshot (name, coords, color data), in response to a request. */
+    public static final String FACTION_VILLAGE_MAP_RESPONSE = "faction_village_map_response";
 }

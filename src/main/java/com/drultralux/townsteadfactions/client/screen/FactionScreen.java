@@ -11,6 +11,7 @@ import com.drultralux.townsteadfactions.client.screen.widget.LeadershipManagemen
 import com.drultralux.townsteadfactions.client.screen.widget.RosterDisplayWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.TabPanelWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.VotingWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.VillageMapWidget;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -173,6 +174,8 @@ public class FactionScreen extends Screen {
     /** The leadership management widget instance, only ever placed on the conditional Leadership tab. */
     private LeadershipManagementWidget leadershipWidget;
 
+    private VillageMapWidget villageMapWidget;
+
     /** The active tab-rename text field, or {@code null} if no rename is in progress. */
     private EditBox tabRenameBox = null;
 
@@ -226,6 +229,7 @@ public class FactionScreen extends Screen {
         this.activityWidget = new ActivityLogWidget(mainX + 20 + ModConfig.CLIENT.getInteger("activityWidgetX", -40), mainY + 40 + ModConfig.CLIENT.getInteger("activityWidgetY", 90));
         this.votingWidget = new VotingWidget(mainX + 20 + ModConfig.CLIENT.getInteger("votingWidgetX", 250), mainY + 40 + ModConfig.CLIENT.getInteger("votingWidgetY", -30));
         this.leadershipWidget = new LeadershipManagementWidget(mainX + 40, mainY + 40);
+        this.villageMapWidget = new VillageMapWidget(mainX + 20 + ModConfig.CLIENT.getInteger("villageMapWidgetX", -100), mainY + 40 + ModConfig.CLIENT.getInteger("villageMapWidgetY", 40));
 
         placeWidget(this.treasuryWidget, "treasuryWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
         placeWidget(this.rosterWidget, "rosterWidgetTabId", TabManager.DEFAULT_TAB_ROSTER);
@@ -233,6 +237,15 @@ public class FactionScreen extends Screen {
         placeWidget(this.avatarWidget, "avatarWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
         placeWidget(this.activityWidget, "activityWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
         placeWidget(this.votingWidget, "votingWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
+        placeWidget(this.villageMapWidget, "villageMapWidgetTabId", TabManager.DEFAULT_TAB_GLOBAL);
+
+        this.treasuryWidget.setMinimized(ModConfig.CLIENT.getBoolean("treasuryWidgetMinimized", false));
+        this.rosterWidget.setMinimized(ModConfig.CLIENT.getBoolean("rosterWidgetMinimized", false));
+        this.globalWidget.setMinimized(ModConfig.CLIENT.getBoolean("globalWidgetMinimized", false));
+        this.avatarWidget.setMinimized(ModConfig.CLIENT.getBoolean("avatarWidgetMinimized", false));
+        this.activityWidget.setMinimized(ModConfig.CLIENT.getBoolean("activityWidgetMinimized", false));
+        this.votingWidget.setMinimized(ModConfig.CLIENT.getBoolean("votingWidgetMinimized", false));
+        this.villageMapWidget.setMinimized(ModConfig.CLIENT.getBoolean("villageMapWidgetMinimized", false));
 
         // The Leadership tab may already exist at this point if it was open and got persisted
         // into customizedTabOrder on a previous session's close — in that case it's restored by
@@ -887,10 +900,19 @@ public class FactionScreen extends Screen {
                 this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, findWidgetTabId(this.avatarWidget),
                 this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, findWidgetTabId(this.activityWidget),
                 this.votingWidget.getX() - mainX - 20, this.votingWidget.getY() - mainY - 40, findWidgetTabId(this.votingWidget),
+                this.villageMapWidget.getX() - mainX - 20, this.villageMapWidget.getY() - mainY - 40, findWidgetTabId(this.villageMapWidget),
                 this.boxWidth, this.boxHeight,
                 this.windowOffsetX, this.windowOffsetY,
                 TabManager.getTabs()
         );
+
+        ScreenLayoutSaver.saveMinimizedState("treasuryWidget", this.treasuryWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("rosterWidget", this.rosterWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("globalWidget", this.globalWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("avatarWidget", this.avatarWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("activityWidget", this.activityWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("votingWidget", this.votingWidget.isMinimized());
+        ScreenLayoutSaver.saveMinimizedState("villageMapWidget", this.villageMapWidget.isMinimized());
     }
 
     /**

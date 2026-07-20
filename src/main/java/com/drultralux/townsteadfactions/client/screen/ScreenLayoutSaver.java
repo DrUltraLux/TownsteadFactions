@@ -53,6 +53,7 @@ public class ScreenLayoutSaver {
             int ax, int ay, String aTabId,
             int lx, int ly, String lTabId,
             int vx, int vy, String vTabId,
+            int vmx, int vmy, String vmTabId,
             int boxW, int boxH,
             int boxOffsetX, int boxOffsetY,
             List<TabPanelWidget> tabs) {
@@ -80,6 +81,10 @@ public class ScreenLayoutSaver {
             setAgnosticValue("votingWidgetX", vx);
             setAgnosticValue("votingWidgetY", vy);
             setAgnosticValue("votingWidgetTabId", vTabId);
+
+            setAgnosticValue("villageMapWidgetX", vmx);
+            setAgnosticValue("villageMapWidgetY", vmy);
+            setAgnosticValue("villageMapWidgetTabId", vmTabId);
 
             setAgnosticValue("mainBoxWidth", boxW);
             setAgnosticValue("mainBoxHeight", boxH);
@@ -204,5 +209,14 @@ public class ScreenLayoutSaver {
         @SuppressWarnings("unchecked")
         T typedValue = (T) value;
         configValue.set(typedValue);
+    }
+
+    public static void saveMinimizedState(String widgetKeyPrefix, boolean minimized) {
+        try {
+            setAgnosticValue(widgetKeyPrefix + "Minimized", minimized);
+            ModConfig.CLIENT_SPEC.save();
+        } catch (Exception e) {
+            LogManager.error("Failed to commit widget minimized state to configuration!", e);
+        }
     }
 }

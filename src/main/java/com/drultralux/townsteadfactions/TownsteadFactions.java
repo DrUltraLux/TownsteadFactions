@@ -109,6 +109,9 @@ public class TownsteadFactions {
             com.drultralux.townsteadfactions.factions.voting.LeadershipManager.resignLeadership(factionId, player.getUUID(), player.getServer());
         });
 
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_VILLAGE_MAP_REQUEST, (player, data) ->
+                FactionPacketManager.sendVillageMap(player, data.getString("factionId"), data.getInt("index")));
+
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.register(ClientModEvents.ClientModBusEvents.class);
             NeoForge.EVENT_BUS.register(ClientModEvents.ClientGameBusEvents.class);
@@ -116,6 +119,7 @@ public class TownsteadFactions {
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_SYNC_DELTA, ClientFactionCache::applyDelta);
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_LAYOUT_RESET, data -> ScreenLayoutSaver.resetToDefaults());
             FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_LOG_MORE, ClientFactionCache::applyMoreLogHistory);
+            FactionPacketDispatcher.registerS2CHandler(FactionPacketActions.FACTION_VILLAGE_MAP_RESPONSE, ClientFactionCache::applyVillageMap);
         }
 
         LogManager.info("Launchpad constructor sequence complete. Processing context transferred.");

@@ -112,6 +112,28 @@ public final class VillageControlManager {
     }
 
     /**
+     * Returns the composite keys of every village a faction currently
+     * cleanly controls, in a stable sorted order — used to page through a
+     * faction's villages (e.g. the village map widget's prev/next arrows)
+     * without the list order shifting between requests.
+     *
+     * @param factionId the faction to list
+     * @return the controlled village keys, sorted, or an empty list if none
+     */
+    public static List<String> getControlledVillageKeys(String factionId) {
+        if (activeStorageInstance == null || factionId == null) return List.of();
+        List<String> result = new java.util.ArrayList<>();
+        for (Map.Entry<String, VillageControlState> entry : activeStorageInstance.villageStates.entrySet()) {
+            VillageControlState state = entry.getValue();
+            if (!state.contested && factionId.equals(state.controllingFactionId)) {
+                result.add(entry.getKey());
+            }
+        }
+        result.sort(String::compareTo);
+        return result;
+    }
+
+    /**
      * Counts how many villages a faction currently controls. Contested
      * villages don't count toward either side, since control is actively
      * in dispute.
@@ -120,11 +142,26 @@ public final class VillageControlManager {
      * @return the number of villages this faction cleanly controls
      */
     public static int getControlledVillageCount(String factionId) {
-        if (activeStorageInstance == null || factionId == null) return 0;
-        int count = 0;
-        for (VillageControlState state : activeStorageInstance.villageStates.values()) {
-            if (!state.contested && factionId.equals(state.controllingFactionId)) count++;
-        }
-        return count;
+        return getControlledVillageKeys(factionId).size();
+    }
+
+    public record CachedVillageMap(String name, int x, int z, String dimension, byte[] colors) {}
+
+    public static void cacheVillageMap(String villageKey, String name, int x, int z, String dimension, byte[] colors) {
+        if (activeStorageInstance == null || villageKey == null) return;
+        VillageControlState state = activeStorageInstance.villageStates.computeIfAbsent(villageKey, k -> new VillageControlState());
+        state.cachedMapName = name;
+        state.cachedMapX = x;
+        state.cachedMapZ = z;
+        state.cachedMapDimension = dimension;
+        state.cachedMapColors = colors;
+        activeStorageInstance.setDirty();
+    }
+
+    public static CachedVillageMap getCachedVillageMap(String villageKey) {
+        if (activeStorageInstance == null || villageKey == null) return null;
+        VillageControlState state = activeStorageInstance.villageStates.get(villageKey);
+        if (state == null || state.cachedMapColors == null) return null;
+        return new CachedVillageMap(state.cachedMapName, state.cachedMapX, state.cachedMapZ, state.cachedMapDimension, state.cachedMapColors);
     }
 }

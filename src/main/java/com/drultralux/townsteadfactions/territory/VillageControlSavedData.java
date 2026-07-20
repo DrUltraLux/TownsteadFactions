@@ -5,7 +5,6 @@ import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.nbt.StringTag;
 import net.minecraft.world.level.saveddata.SavedData;
-
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -48,6 +47,15 @@ public class VillageControlSavedData extends SavedData {
                         state.contestedFactions.add(contestedList.getString(i));
                     }
                 }
+
+                if (stateTag.contains("cachedMapColors", 7)) { // 7 is ByteArrayTag
+                    state.cachedMapName = stateTag.getString("cachedMapName");
+                    state.cachedMapX = stateTag.getInt("cachedMapX");
+                    state.cachedMapZ = stateTag.getInt("cachedMapZ");
+                    state.cachedMapDimension = stateTag.getString("cachedMapDimension");
+                    state.cachedMapColors = stateTag.getByteArray("cachedMapColors");
+                }
+
                 data.villageStates.put(key, state);
             }
         }
@@ -77,6 +85,14 @@ public class VillageControlSavedData extends SavedData {
             }
             stateTag.put("contestedFactions", contestedList);
 
+            if (state.cachedMapColors != null) {
+                stateTag.putString("cachedMapName", state.cachedMapName);
+                stateTag.putInt("cachedMapX", state.cachedMapX);
+                stateTag.putInt("cachedMapZ", state.cachedMapZ);
+                stateTag.putString("cachedMapDimension", state.cachedMapDimension);
+                stateTag.putByteArray("cachedMapColors", state.cachedMapColors);
+            }
+
             villagesTag.put(key, stateTag);
         });
         tag.put("villages", villagesTag);
@@ -97,5 +113,11 @@ public class VillageControlSavedData extends SavedData {
 
         /** The factions currently tied for control, only populated while {@link #contested} is true. */
         public final List<String> contestedFactions = new ArrayList<>();
+
+        public String cachedMapName;
+        public int cachedMapX;
+        public int cachedMapZ;
+        public String cachedMapDimension;
+        public byte[] cachedMapColors;
     }
 }

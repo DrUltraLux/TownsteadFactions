@@ -180,6 +180,9 @@ public abstract class DraggableWidget {
      */
     public void setPosition(int x, int y) { this.x = x; this.y = y; }
 
+    public boolean isMinimized() { return this.isMinimized; }
+    public void setMinimized(boolean minimized) { this.isMinimized = minimized; }
+
     /**
      * Renders this widget's standard minimized (collapsed) appearance: a
      * thin header bar with a label and a restore button, always
