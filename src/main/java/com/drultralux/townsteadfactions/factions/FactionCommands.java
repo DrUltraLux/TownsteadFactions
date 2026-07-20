@@ -8,7 +8,6 @@ import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import com.drultralux.townsteadfactions.network.FactionPacketActions;
 import com.drultralux.townsteadfactions.titles.TitlePreferenceManager;
 import com.drultralux.townsteadfactions.territory.VillageControlManager;
-import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
 import net.conczin.mca.server.world.data.Village;
 import net.conczin.mca.server.world.data.VillageManager;
 import net.minecraft.server.level.ServerLevel;
@@ -255,7 +254,7 @@ public class FactionCommands {
             return 0;
         }
 
-        String comprehensiveSummary = FactionManager.getFactionSummaryString(factionId);
+        String comprehensiveSummary = FactionManager.getFactionSummaryString(factionId, source.getServer());
 
         if (comprehensiveSummary == null) {
             source.sendFailure(Component.literal("Specified Faction ID could not be matched against active arrays."));
@@ -360,7 +359,7 @@ public class FactionCommands {
 
             String factionId = FactionManager.getPlayerFactionId(player.getUUID());
             if (factionId != null) {
-                FactionManager.logFactionAction(factionId, player.getName().getString() + " set their title to " + title.getDisplayName() + ".");
+                FactionManager.logFactionAction(factionId, FactionManager.resolvePlayerDisplayName(player.getServer(), player.getUUID()) + " set their title to " + title.getDisplayName() + ".");
                 FactionPacketManager.broadcastFactionDelta(factionId, source.getServer());
             }
 
@@ -387,7 +386,7 @@ public class FactionCommands {
 
             String factionId = FactionManager.getPlayerFactionId(player.getUUID());
             if (factionId != null) {
-                FactionManager.logFactionAction(factionId, player.getName().getString() + " reset their title to the default.");
+                FactionManager.logFactionAction(factionId, FactionManager.resolvePlayerDisplayName(player.getServer(), player.getUUID()) + " reset their title to the default.");
                 FactionPacketManager.broadcastFactionDelta(factionId, source.getServer());
             }
 
@@ -431,7 +430,7 @@ public class FactionCommands {
 
             Map<String, Integer> tally = new java.util.HashMap<>();
             for (var resident : found.getResidents(level)) {
-                String factionId = VillagerFactionRegistry.getVillagerFaction(resident.getUUID());
+                String factionId = FactionManager.getParticipantFactionId(resident.getUUID());
                 if (factionId != null) {
                     tally.merge(factionId, 1, Integer::sum);
                 }

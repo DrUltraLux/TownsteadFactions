@@ -8,23 +8,26 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
+import net.minecraft.util.FormattedCharSequence;
 
 import java.util.List;
 
 /**
  * A draggable widget showing the player's faction's activity log: the
  * most recent entries by default, with mouse-wheel scrolling to look
- * further back through history. Requests older entries from the server
- * on demand as the player scrolls near the edge of what's currently
- * cached.
+ * further back through history. Long entries wrap onto multiple lines
+ * (via vanilla's own text-wrapping, the same mechanism used for books and
+ * signs) rather than ever requiring the widget to grow wider. Requests
+ * older entries from the server on demand as the player scrolls near the
+ * edge of what's currently cached.
  */
 public class ActivityLogWidget extends DraggableWidget {
 
-    /** How many log lines are visible at once. */
-    private static final int VISIBLE_LINES = 10;
-
     /** How close to the end of cached history (in entries) triggers a request for more. */
     private static final int PREFETCH_THRESHOLD = 3;
+
+    /** The height, in pixels, of a single rendered (wrapped) line. */
+    private static final int LINE_HEIGHT = 9;
 
     /** The font used to draw the header and log lines. */
     private final Font font;
@@ -46,14 +49,14 @@ public class ActivityLogWidget extends DraggableWidget {
      * @param y the y position of the widget
      */
     public ActivityLogWidget(int x, int y) {
-        super(x, y, 210, 112);
+        super(x, y, 230, 112);
         this.font = Minecraft.getInstance().font;
     }
 
     /**
-     * Renders the widget's background, header, and the current window of
-     * visible log lines for the player's faction, unless the widget is
-     * minimized.
+     * Renders the widget's background, header, and as many (wrapped)
+     * lines of log entries as fit in the available height, starting from
+     * the current scroll offset, unless the widget is minimized.
      *
      * @param graphics the graphics context to draw with
      * @param mouseX the current mouse x position
@@ -62,10 +65,15 @@ public class ActivityLogWidget extends DraggableWidget {
      */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        if (this.isMinimized) {
+            renderMinimizedHeader(graphics, this.font, "FACTION LOG");
+            return;
+        }
+
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x66000000);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF444444);
 
-        if (this.isMinimized) return;
+        renderMinimizeButton(graphics, this.font);
 
         String logHeader = "⚙ FACTION LOG";
         graphics.drawString(this.font, Component.literal(logHeader), this.x + 6, this.y + 5, FactionPalette.getBarColor("text_gold"), false);
@@ -80,28 +88,34 @@ public class ActivityLogWidget extends DraggableWidget {
             return;
         }
 
-        int maxOffset = Math.max(0, entries.size() - VISIBLE_LINES);
+        int maxOffset = Math.max(0, entries.size() - 1);
         this.scrollOffset = Math.min(this.scrollOffset, maxOffset);
 
-        int currentYOffset = this.y + 18;
-        int endIndex = Math.min(entries.size(), this.scrollOffset + VISIBLE_LINES);
-        for (int i = this.scrollOffset; i < endIndex; i++) {
+        int textMaxWidth = this.width - 16;
+        int currentY = this.y + 18;
+        int bottomBound = this.y + this.height - 6;
+
+        outer:
+        for (int i = this.scrollOffset; i < entries.size(); i++) {
             String line = "§7• §f" + entries.get(i).message();
-            graphics.drawString(this.font, Component.literal(line), this.x + 8, currentYOffset, FactionPalette.getBarColor("text_blue"), false);
-            currentYOffset += 9;
-            if (currentYOffset >= this.y + this.height - 6) break;
+            List<FormattedCharSequence> wrapped = this.font.split(Component.literal(line), textMaxWidth);
+            for (FormattedCharSequence wrappedLine : wrapped) {
+                if (currentY >= bottomBound) break outer;
+                graphics.drawString(this.font, wrappedLine, this.x + 8, currentY, FactionPalette.getBarColor("text_blue"), false);
+                currentY += LINE_HEIGHT;
+            }
         }
 
         // Prefetch older history once the player scrolls near the end of what's cached.
-        if (factionData != null && factionData.hasMoreLogHistory && entries.size() - this.scrollOffset <= VISIBLE_LINES + PREFETCH_THRESHOLD) {
+        if (factionData != null && factionData.hasMoreLogHistory && entries.size() - this.scrollOffset <= PREFETCH_THRESHOLD + 3) {
             ClientFactionCache.requestMoreActivityLog(activeId);
         }
     }
 
     /**
      * Scrolls the visible log window when the mouse wheel is used over
-     * this widget, clamped so it never scrolls past the oldest
-     * currently-cached entry.
+     * this widget, one entry at a time, clamped so it never scrolls past
+     * the last cached entry.
      *
      * @param mouseX the mouse x position
      * @param mouseY the mouse y position
@@ -117,7 +131,7 @@ public class ActivityLogWidget extends DraggableWidget {
         ClientFactionData factionData = ClientFactionCache.getCachedFactions().get(activeId);
         List<ActivityLogEntry> entries = (factionData != null) ? factionData.activityLog : List.of();
 
-        int maxOffset = Math.max(0, entries.size() - VISIBLE_LINES);
+        int maxOffset = Math.max(0, entries.size() - 1);
         this.scrollOffset = Math.max(0, Math.min(maxOffset, this.scrollOffset - (int) Math.signum(scrollY)));
         return true;
     }

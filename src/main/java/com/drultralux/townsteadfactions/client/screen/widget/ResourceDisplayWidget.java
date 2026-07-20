@@ -10,9 +10,14 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
+import java.util.Map;
+
 /**
  * A draggable widget displaying the local player's faction resources:
- * power, airships, treasury, food, and mana.
+ * power, airships, treasury, food, and mana. Power and treasury are
+ * shown as this faction's share of the server-wide total, computed
+ * client-side from the full set of factions already present in
+ * {@link ClientFactionCache} — no dedicated network data needed.
  */
 public class ResourceDisplayWidget extends DraggableWidget {
 
@@ -80,20 +85,29 @@ public class ResourceDisplayWidget extends DraggableWidget {
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, backgroundColor);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF666666);
 
-        String minBtnText = isMinimizeButtonHovered(mouseX, mouseY) ? "§e[-]" : "§7[-]";
-        graphics.drawString(this.font, minBtnText, this.x + this.width - 16, this.y + 3, FactionPalette.getBarColor("text_gold"), false);
+        renderMinimizeButton(graphics, this.font);
 
         String activeId = ClientFactionCache.getAssignedFactionId();
-        ClientFactionCache.ClientFactionData faction = ClientFactionCache.getCachedFactions().get(activeId);
+        Map<String, ClientFactionCache.ClientFactionData> allFactions = ClientFactionCache.getCachedFactions();
+        ClientFactionCache.ClientFactionData faction = allFactions.get(activeId);
 
-        int factionSize = (faction != null) ? faction.roster.size() : 0;
+        int factionSize = (faction != null) ? faction.roster.size() + faction.villagerCount : 0;
         int liveCogs = ClientFactionCache.getCogs();
         int liveFood = ClientFactionCache.getFood();
         int liveMana = ClientFactionCache.getMana();
 
-        float powerPercent = (factionSize > 0) ? 1.0F : 0.0F;
+        // Power and Treasury are this faction's share of the server-wide total across every
+        // active faction (already fully present in the client cache — no extra sync needed).
+        int totalPlayerCount = 0;
+        int totalCogs = 0;
+        for (ClientFactionCache.ClientFactionData f : allFactions.values()) {
+            totalPlayerCount += f.roster.size() + f.villagerCount;
+            totalCogs += f.cogs;
+        }
+
+        float powerPercent = (totalPlayerCount > 0) ? (float) factionSize / totalPlayerCount : 0.0F;
         float shipsPercent = 0.8F;
-        float cogsPercent = Math.min(1.0F, Math.max(0.0F, (float) liveCogs / 10.0F));
+        float cogsPercent = (totalCogs > 0) ? (float) liveCogs / totalCogs : 0.0F;
         float foodPercent = Math.min(1.0F, Math.max(0.0F, (float) liveFood / 10.0F));
         float manaPercent = Math.min(1.0F, Math.max(0.0F, (float) liveMana / 10.0F));
 
@@ -105,19 +119,18 @@ public class ResourceDisplayWidget extends DraggableWidget {
         int col1X = this.x + 8;
 
         this.powerHeader.render(graphics, col1X, this.y + 6, 0.0F);
-        graphics.drawString(this.font, Component.literal("Power: " + factionSize + " / " + factionSize), col1X, this.y + 18, FactionPalette.getBarColor("text_pink"), false);
+        graphics.drawString(this.font, Component.literal("Power: " + factionSize + " / " + totalPlayerCount), col1X, this.y + 18, FactionPalette.getBarColor("text_pink"), false);
         this.powerBar.render(graphics, col1X, this.y + 28, powerPercent);
 
         this.airshipsLabel.render(graphics, col1X, this.y + 44, 0.0F);
         this.airshipsBar.render(graphics, col1X, this.y + 54, shipsPercent);
 
-        ClientFactionCache.ClientFactionData factionData = ClientFactionCache.getCachedFactions().get(activeId);
-        int villagerCount = (factionData != null) ? factionData.villagerCount : 0;
-        int controlledVillages = (factionData != null) ? factionData.controlledVillages : 0;
+        int villagerCount = (faction != null) ? faction.villagerCount : 0;
+        int controlledVillages = (faction != null) ? faction.controlledVillages : 0;
 
-        this.territoryLabel.render(graphics, col1X, this.y + 70, 0.0F);
-        graphics.drawString(this.font, Component.literal("Villagers: " + villagerCount), col1X, this.y + 82, FactionPalette.getBarColor("text_pink"), false);
-        graphics.drawString(this.font, Component.literal("Villages: " + controlledVillages), col1X, this.y + 92, FactionPalette.getBarColor("text_pink"), false);
+        this.territoryLabel.render(graphics, col1X, this.y + 66, 0.0F);
+        graphics.drawString(this.font, Component.literal("Villagers: " + villagerCount), col1X, this.y + 78, FactionPalette.getBarColor("text_pink"), false);
+        graphics.drawString(this.font, Component.literal("Villages: " + controlledVillages), col1X, this.y + 88, FactionPalette.getBarColor("text_pink"), false);
 
         // --- COLUMN 2: RIGHT SIDE (STATISTICS & STORAGE) ---
         int col2X = this.x + 115;

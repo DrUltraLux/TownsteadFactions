@@ -42,17 +42,18 @@ public class GlobalFactionsWidget extends DraggableWidget {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
 
+        if (this.isMinimized) {
+            renderMinimizedHeader(graphics, this.font, "FACTIONS");
+            return;
+        }
+
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x99000000);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF555555);
 
+        renderMinimizeButton(graphics, this.font);
+
         String titleText = "§6=== Factions ===";
         graphics.drawString(this.font, Component.literal(titleText), this.x + 8, this.y + 6, FactionPalette.getBarColor("text_gold"), true);
-
-        if (this.isMinimized) {
-            String minimizedText = "§7Factions [Min]";
-            graphics.drawString(this.font, Component.literal(minimizedText), this.x + 12, this.y + 22, FactionPalette.getBarColor("text_gold"), true);
-            return;
-        }
 
         Map<String, ClientFactionData> globalFactions = ClientFactionCache.getCachedFactions();
         String currentFactionId = ClientFactionCache.getAssignedFactionId();

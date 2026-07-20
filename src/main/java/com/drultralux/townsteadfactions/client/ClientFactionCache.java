@@ -1,6 +1,8 @@
 package com.drultralux.townsteadfactions.client;
 
 import com.drultralux.townsteadfactions.factions.FactionTitle;
+import com.drultralux.townsteadfactions.factions.voting.VoteChoice;
+import com.drultralux.townsteadfactions.factions.voting.VoteType;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
 import com.drultralux.townsteadfactions.config.ModConfig;
@@ -9,7 +11,9 @@ import com.drultralux.townsteadfactions.network.FactionPacketActions;
 import com.drultralux.townsteadfactions.network.payload.FactionC2SPayload;
 import net.neoforged.neoforge.network.PacketDistributor;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import java.util.HashMap;
@@ -117,6 +121,7 @@ public class ClientFactionCache {
         data.mana = factionTag.getInt("mana");
         data.villagerCount = factionTag.getInt("villagerCount");
         data.controlledVillages = factionTag.getInt("controlledVillages");
+        data.capitalsFunctional = factionTag.getBoolean("capitalsFunctional");
 
         if (factionTag.contains("members", 9)) { // 9 is ListTag
             ListTag membersList = factionTag.getList("members", 10); // 10 is CompoundTag type identifier
@@ -127,7 +132,8 @@ public class ClientFactionCache {
                     String memberName = memberTag.contains("name", 8) ? memberTag.getString("name") : "Unknown Member";
                     String memberRoot = memberTag.contains("root", 8) ? memberTag.getString("root") : "Unknown";
                     String memberTitle = memberTag.contains("title", 8) ? memberTag.getString("title") : FactionTitle.MEMBER.getDisplayName();
-                    data.roster.put(memberUuid, new RosterEntry(memberName, memberRoot, memberTitle));
+                    boolean memberIsLeader = memberTag.getBoolean("isLeader");
+                    data.roster.put(memberUuid, new RosterEntry(memberName, memberRoot, memberTitle, memberIsLeader));
                 }
             }
         }
@@ -140,7 +146,8 @@ public class ClientFactionCache {
                     String vName = villagerTag.contains("name", 8) ? villagerTag.getString("name") : "Unknown Villager";
                     String vRoot = villagerTag.contains("root", 8) ? villagerTag.getString("root") : "Unknown";
                     String vTitle = villagerTag.contains("title", 8) ? villagerTag.getString("title") : FactionTitle.VILLAGER.getDisplayName();
-                    data.villagerRoster.put(villagerUuid, new RosterEntry(vName, vRoot, vTitle));
+                    boolean vIsLeader = villagerTag.getBoolean("isLeader");
+                    data.villagerRoster.put(villagerUuid, new RosterEntry(vName, vRoot, vTitle, vIsLeader));
                 }
             }
         }
@@ -154,7 +161,52 @@ public class ClientFactionCache {
         }
         data.hasMoreLogHistory = factionTag.getBoolean("hasMoreLogHistory");
 
+        if (factionTag.contains("activeVotes", 9)) { // 9 is ListTag
+            ListTag votesList = factionTag.getList("activeVotes", 10); // 10 is CompoundTag
+            for (int i = 0; i < votesList.size(); i++) {
+                CompoundTag voteTag = votesList.getCompound(i);
+                data.activeVotes.add(parseVoteSnapshot(voteTag));
+            }
+        }
+
         return data;
+    }
+
+    /**
+     * Parses a single active vote's snapshot NBT into a
+     * {@link ClientVoteInfo}.
+     *
+     * @param voteTag the vote's snapshot data
+     * @return the parsed vote info
+     */
+    private static ClientVoteInfo parseVoteSnapshot(CompoundTag voteTag) {
+        UUID voteId = voteTag.getUUID("voteId");
+        VoteType type = VoteType.valueOf(voteTag.getString("type"));
+        UUID targetUUID = voteTag.getUUID("targetUUID");
+        String targetName = voteTag.contains("targetName", 8) ? voteTag.getString("targetName") : "Unknown"; // 8 is StringTag
+        String targetRoot = voteTag.contains("targetRoot", 8) ? voteTag.getString("targetRoot") : "Unknown";
+        long expiryTimestamp = voteTag.getLong("expiryTimestamp");
+        int yesCount = voteTag.getInt("yesCount");
+        int noCount = voteTag.getInt("noCount");
+        int totalEligibleVoters = voteTag.getInt("totalEligibleVoters");
+
+        Set<UUID> votedUUIDs = new HashSet<>();
+        if (voteTag.contains("votedUUIDs", 9)) { // 9 is ListTag
+            ListTag votedList = voteTag.getList("votedUUIDs", 11); // 11 is IntArrayTag, how UUIDs are stored
+            for (int i = 0; i < votedList.size(); i++) {
+                votedUUIDs.add(net.minecraft.nbt.NbtUtils.loadUUID(votedList.get(i)));
+            }
+        }
+
+        Set<UUID> eligibleUUIDs = new HashSet<>();
+        if (voteTag.contains("eligibleUUIDs", 9)) { // 9 is ListTag
+            ListTag eligibleList = voteTag.getList("eligibleUUIDs", 11); // 11 is IntArrayTag
+            for (int i = 0; i < eligibleList.size(); i++) {
+                eligibleUUIDs.add(net.minecraft.nbt.NbtUtils.loadUUID(eligibleList.get(i)));
+            }
+        }
+
+        return new ClientVoteInfo(voteId, type, targetUUID, targetName, targetRoot, expiryTimestamp, yesCount, noCount, totalEligibleVoters, votedUUIDs, eligibleUUIDs);
     }
 
     /**
@@ -197,8 +249,69 @@ public class ClientFactionCache {
     public static int getMana() { return mana; }
 
     /**
+     * Sends a cast choice on an active vote to the server.
+     *
+     * @param voteId the vote being cast on
+     * @param choice the choice to cast
+     */
+    public static void castVote(UUID voteId, VoteChoice choice) {
+        if (voteId == null || choice == null) return;
+        CompoundTag requestNbt = new CompoundTag();
+        requestNbt.putUUID("voteId", voteId);
+        requestNbt.putString("choice", choice.name());
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_VOTE_CAST, requestNbt));
+    }
+
+    /**
+     * Sends a request to self-nominate for a leadership vote (the
+     * non-Capitals "Request leadership position" button). The server is
+     * the sole authority on whether this is actually allowed — this call
+     * does nothing but ask.
+     */
+    public static void requestLeadership() {
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_VOTE_REQUEST_LEADERSHIP, new CompoundTag()));
+    }
+
+    /**
+     * Checks whether the local player is currently a Leader of their
+     * assigned faction, using cached synced data.
+     *
+     * @return {@code true} if currently a leader
+     */
+    public static boolean isLocalPlayerLeader() {
+        var mc = net.minecraft.client.Minecraft.getInstance();
+        if (mc.player == null) return false;
+        ClientFactionData data = cachedFactions.get(assignedFactionId);
+        if (data == null) return false;
+
+        RosterEntry entry = data.roster.get(mc.player.getUUID());
+        return entry != null && entry.isLeader();
+    }
+
+    /**
+     * Sends a request to nominate a different faction member for
+     * leadership (the Leadership tab's "Nominate" control).
+     *
+     * @param targetUUID the member being nominated
+     */
+    public static void nominateForLeadership(UUID targetUUID) {
+        if (targetUUID == null) return;
+        CompoundTag requestNbt = new CompoundTag();
+        requestNbt.putUUID("targetUUID", targetUUID);
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_LEADERSHIP_NOMINATE, requestNbt));
+    }
+
+    /**
+     * Sends a request to voluntarily resign from leadership.
+     */
+    public static void resignLeadership() {
+        PacketDistributor.sendToServer(new FactionC2SPayload(FactionPacketActions.FACTION_LEADERSHIP_RESIGN, new CompoundTag()));
+    }
+
+    /**
      * A lightweight, client-side snapshot of a single faction's identity,
-     * resources, and member roster, as synced from the server.
+     * resources, member roster, and active votes, as synced from the
+     * server.
      */
     public static class ClientFactionData {
 
@@ -223,6 +336,9 @@ public class ClientFactionCache {
         /** The number of villages this faction currently controls. */
         public int controlledVillages;
 
+        /** Whether MCA Capitals is currently present and functionally integrated, server-wide. */
+        public boolean capitalsFunctional;
+
         /** Member roster entries, keyed by UUID. */
         public final Map<UUID, RosterEntry> roster = new HashMap<>();
 
@@ -234,6 +350,9 @@ public class ClientFactionCache {
 
         /** Whether older log history exists on the server beyond what's cached here. */
         public boolean hasMoreLogHistory = false;
+
+        /** Every currently active leadership vote for this faction. */
+        public final List<ClientVoteInfo> activeVotes = new ArrayList<>();
     }
 
     /**
@@ -280,11 +399,34 @@ public class ClientFactionCache {
 
     /**
      * A single roster member's display information: their name, origin,
-     * and resolved title.
+     * resolved title, and whether they currently hold a Leader role.
      *
      * @param name the member's display name
      * @param root the member's origin display name (e.g. "High Elf"), or "Unknown"
      * @param title the member's resolved faction title (e.g. "Leader", "Sir")
+     * @param isLeader whether this member currently holds a Leader role
      */
-    public record RosterEntry(String name, String root, String title) {}
+    public record RosterEntry(String name, String root, String title, boolean isLeader) {}
+
+    /**
+     * A single active leadership vote's client-facing information. Never
+     * includes what anyone actually chose — only who's eligible and who's
+     * already participated, so a viewer can check their own status
+     * locally while every other player's choice stays fully private.
+     *
+     * @param voteId this vote's unique identifier
+     * @param type the kind of vote this is
+     * @param targetUUID the vote's subject (candidate or leader-to-remove)
+     * @param targetName the target's resolved display name
+     * @param targetRoot the target's resolved origin display name
+     * @param expiryTimestamp when this vote expires, in milliseconds since the epoch
+     * @param yesCount the current public yes count
+     * @param noCount the current public no count
+     * @param totalEligibleVoters the total number of participants currently eligible to vote
+     * @param votedUUIDs every participant who has currently cast a choice
+     * @param eligibleUUIDs every participant currently eligible to vote
+     */
+    public record ClientVoteInfo(UUID voteId, VoteType type, UUID targetUUID, String targetName, String targetRoot,
+                                 long expiryTimestamp, int yesCount, int noCount, int totalEligibleVoters,
+                                 Set<UUID> votedUUIDs, Set<UUID> eligibleUUIDs) {}
 }

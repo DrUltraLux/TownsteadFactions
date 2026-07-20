@@ -15,25 +15,29 @@ import java.util.UUID;
 public class TitleManager {
 
     /**
-     * Resolves the display title for a UUID.
-     *
-     * @param entityUUID the UUID to resolve a title for (player or NPC)
-     * @param fallbackLocalTitle the faction title to fall back to when
-     *                            neither a self-assigned choice nor a
-     *                            Capitals rank applies
-     * @return the resolved display title
+     * Resolves the display title for a UUID (player or NPC): a genuine
+     * earned MCA Capitals nobility rank (Knight or above) takes priority if
+     * one exists, then a self-assigned cosmetic choice, then the faction's
+     * own base-tier fallback title. Real, earned status always outranks a
+     * cosmetic preference — this deliberately doesn't cover Leader status,
+     * which is a faction-scoped concept this class has no knowledge of;
+     * callers that need "Leader overrides everything" apply that check
+     * themselves before falling back to this method.
      */
     public static String getResolvedTitleName(UUID entityUUID, FactionTitle fallbackLocalTitle) {
+        if (CapitalsIntegration.isIntegrationFunctional()) {
+            FactionTitle capitalsTitle = CapitalsIntegration.resolveTitle(entityUUID);
+            if (capitalsTitle != null && capitalsTitle != FactionTitle.COMMONER) {
+                return capitalsTitle.getDisplayName();
+            }
+        }
+
         FactionTitle selfAssigned = TitlePreferenceManager.getSelfAssignedTitle(entityUUID);
         if (selfAssigned != null) {
             return selfAssigned.getDisplayName();
         }
 
         if (CapitalsIntegration.isIntegrationFunctional()) {
-            FactionTitle capitalsTitle = CapitalsIntegration.resolveTitle(entityUUID);
-            if (capitalsTitle != null) {
-                return capitalsTitle.getDisplayName();
-            }
             return FactionTitle.COMMONER.getDisplayName();
         }
 

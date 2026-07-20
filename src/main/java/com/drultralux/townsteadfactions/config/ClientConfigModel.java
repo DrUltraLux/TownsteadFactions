@@ -54,6 +54,10 @@ public class ClientConfigModel {
         interfaceSettings.put("activityWidgetY", 90);
         interfaceSettings.put("activityWidgetTabId", "overview");
 
+        interfaceSettings.put("votingWidgetX", 250);
+        interfaceSettings.put("votingWidgetY", -30);
+        interfaceSettings.put("votingWidgetTabId", "overview");
+
         // Default tab order, as "ID;Display Name" pairs
         List<String> defaultTabOrder = new ArrayList<>();
         defaultTabOrder.add("overview;Overview");

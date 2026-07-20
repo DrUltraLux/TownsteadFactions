@@ -20,5 +20,10 @@ public class CommonConfigModel {
         // Real-world seconds between village census sweeps (token-ring: one village checked per interval)
         technicalSettings.put("villageCensusIntervalSeconds", 10);
         technicalSettings.put("factionActivityLogCap", 2000);
+        technicalSettings.put("villagerVotingEnabled", true);
+        technicalSettings.put("villagerDislikeThreshold", 0);
+        technicalSettings.put("voteDurationHours", 48);
+        technicalSettings.put("leadershipVoteCheckIntervalSeconds", 300);
+        technicalSettings.put("monarchElevationCheckIntervalSeconds", 60);
     }
 }

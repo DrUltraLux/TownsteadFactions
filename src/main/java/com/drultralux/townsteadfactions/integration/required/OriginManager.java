@@ -215,7 +215,7 @@ public class OriginManager {
         }
         boolean changed = FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), fallbackFactionId);
         if (changed) {
-            FactionManager.logFactionAction(fallbackFactionId, player.getName().getString() + " joined the faction.");
+            FactionManager.logFactionAction(fallbackFactionId, FactionManager.resolvePlayerDisplayName(player.getServer(), player.getUUID()) + " joined the faction.");
         }
     }
 
@@ -246,7 +246,7 @@ public class OriginManager {
         LogManager.info("Mapping player " + player.getName().getString() + " to faction: " + targetFactionKey + " (Origin: " + getCleanName(cleanedRootId) + ")");
         boolean changed = FactionManager.getInstance().assignPlayerToFaction(player.getUUID(), targetFactionKey);
         if (changed) {
-            FactionManager.logFactionAction(targetFactionKey, player.getName().getString() + " joined the faction.");
+            FactionManager.logFactionAction(targetFactionKey, FactionManager.resolvePlayerDisplayName(player.getServer(), player.getUUID()) + " joined the faction.");
         }
     }
 

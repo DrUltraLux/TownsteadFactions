@@ -9,8 +9,9 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Represents a single faction: its identity, leader, currency balances,
- * member roster, and the set of origins allowed to join it.
+ * Represents a single faction: its identity, currency balances, unified
+ * player/villager participant roster, and the set of origins allowed to
+ * join it.
  */
 public class Faction {
 
@@ -20,20 +21,15 @@ public class Faction {
     /** This faction's human-readable display name. */
     private String displayName;
 
-    /** The UUID of this faction's leader, if one is set. */
-    private UUID leaderUUID;
-
     /** Origin identifiers whose members are allowed to join this faction. */
     private final List<String> validOrigins = new ArrayList<>();
 
     /**
-     * This faction's members, keyed by UUID, in join order. Each member's
-     * faction-internal role (Leader/Member) and join time live on their
-     * {@link MemberProfile} — this is distinct from a player's
-     * self-assigned cosmetic title or their Capitals-derived nobility
-     * rank, both handled elsewhere.
+     * This faction's participants — players and villagers alike, unified
+     * into one map keyed by UUID. See {@link FactionParticipant} for how
+     * the two kinds differ.
      */
-    private final Map<UUID, MemberProfile> members = new LinkedHashMap<>();
+    private final Map<UUID, FactionParticipant> participants = new LinkedHashMap<>();
 
     /**
      * This faction's full activity history, oldest first. An
@@ -58,12 +54,10 @@ public class Faction {
      *
      * @param id the unique identifier for this faction (e.g. {@code "Mages"})
      * @param displayName the human-readable name shown in the UI
-     * @param leaderUUID the UUID of this faction's leader, or {@code null} if none
      */
-    public Faction(String id, String displayName, UUID leaderUUID) {
+    public Faction(String id, String displayName) {
         this.id = id != null ? id.trim() : "";
         this.displayName = displayName != null ? displayName.trim() : "";
-        this.leaderUUID = leaderUUID;
     }
 
     /**
@@ -96,24 +90,6 @@ public class Faction {
     }
 
     /**
-     * Returns the UUID of this faction's leader.
-     *
-     * @return the leader's UUID, or {@code null} if none is set
-     */
-    public UUID getLeaderUUID() {
-        return this.leaderUUID;
-    }
-
-    /**
-     * Sets this faction's leader.
-     *
-     * @param leaderUUID the new leader's UUID, or {@code null} to clear it
-     */
-    public void setLeaderUUID(UUID leaderUUID) {
-        this.leaderUUID = leaderUUID;
-    }
-
-    /**
      * Returns the list of origin identifiers allowed to join this faction.
      *
      * @return the valid origins for this faction
@@ -140,63 +116,116 @@ public class Faction {
     }
 
     /**
-     * Returns this faction's members, keyed by UUID. Modifying the
+     * Returns this faction's participants, keyed by UUID. Modifying the
      * returned map modifies this faction directly — intended for use by
      * {@code FactionManager} and the save/load path only.
      *
-     * @return the member roster
+     * @return the participant roster
      */
-    public Map<UUID, MemberProfile> getMembers() {
-        return this.members;
+    public Map<UUID, FactionParticipant> getParticipants() {
+        return this.participants;
     }
 
     /**
-     * Adds a player to this faction as a regular member, if not already
-     * present.
+     * Adds a player to this faction as a regular (non-leader) member, if
+     * not already present, joining at the current time.
      *
      * @param playerUUID the UUID of the player to add
      */
-    public void addMember(UUID playerUUID) {
+    public void addPlayerParticipant(UUID playerUUID) {
         if (playerUUID != null) {
-            this.members.putIfAbsent(playerUUID, new MemberProfile(playerUUID, FactionTitle.MEMBER));
+            this.participants.putIfAbsent(playerUUID, FactionParticipant.createPlayer(playerUUID, System.currentTimeMillis()));
         }
     }
 
     /**
-     * Removes a player from this faction, if they are a member.
+     * Restores a player participant with a specific join time, trusting
+     * it as-is. Intended for the save/load path only, so a reloaded
+     * player's real join date is preserved rather than reset to "now".
      *
-     * @param playerUUID the UUID of the player to remove
+     * @param playerUUID the UUID of the player to restore
+     * @param joinTimestamp their real join time, in milliseconds since the epoch
+     * @param leader whether they were a leader when saved
      */
-    public void removeMember(UUID playerUUID) {
-        if (playerUUID != null) {
-            this.members.remove(playerUUID);
+    public void restorePlayerParticipant(UUID playerUUID, long joinTimestamp, boolean leader) {
+        if (playerUUID == null) return;
+        FactionParticipant participant = FactionParticipant.createPlayer(playerUUID, joinTimestamp);
+        participant.setLeader(leader);
+        this.participants.put(playerUUID, participant);
+    }
+
+    /**
+     * Adds a new villager participant, or updates an existing one's
+     * cached display fields if already present. Called by the village
+     * census sweep, which re-verifies every resident on each visit.
+     *
+     * @param villagerUUID the villager's UUID
+     * @param name the villager's current display name
+     * @param rootId the villager's current origin (root) ID
+     * @param title the villager's current resolved display title
+     */
+    public void addOrUpdateVillagerParticipant(UUID villagerUUID, String name, String rootId, FactionTitle title) {
+        if (villagerUUID == null) return;
+        FactionParticipant existing = this.participants.get(villagerUUID);
+        if (existing != null && existing.isVillager()) {
+            existing.updateVillagerCache(name, rootId, title);
+        } else {
+            this.participants.put(villagerUUID, FactionParticipant.createVillager(villagerUUID, name, rootId, title));
         }
     }
 
     /**
-     * Restores a member profile as-is, without the "if not already
-     * present" check {@link #addMember} applies. Intended for the save/load
-     * path only, where the saved title and join time should be trusted
-     * and reapplied directly.
+     * Restores a villager participant exactly as saved, trusting the
+     * given leader status. Intended for the save/load path only.
      *
-     * @param profile the member profile to restore
+     * @param villagerUUID the villager's UUID
+     * @param name the villager's saved display name
+     * @param rootId the villager's saved origin (root) ID
+     * @param title the villager's saved resolved display title
+     * @param leader whether they were a leader when saved
      */
-    public void restoreMember(MemberProfile profile) {
-        if (profile != null && profile.getPlayerUUID() != null) {
-            this.members.put(profile.getPlayerUUID(), profile);
+    public void restoreVillagerParticipant(UUID villagerUUID, String name, String rootId, FactionTitle title, boolean leader) {
+        if (villagerUUID == null) return;
+        FactionParticipant participant = FactionParticipant.createVillager(villagerUUID, name, rootId, title);
+        participant.setLeader(leader);
+        this.participants.put(villagerUUID, participant);
+    }
+
+    /**
+     * Removes a participant — player or villager — from this faction, if
+     * present.
+     *
+     * @param uuid the UUID of the participant to remove
+     */
+    public void removeParticipant(UUID uuid) {
+        if (uuid != null) {
+            this.participants.remove(uuid);
         }
     }
 
     /**
-     * Checks whether a player currently holds the Leader role within this
-     * faction's internal structure.
+     * Checks whether a participant currently holds a Leader role.
      *
-     * @param playerUUID the player to check
-     * @return {@code true} if they're a member with the Leader title
+     * @param uuid the participant to check
+     * @return {@code true} if they're a current member/villager with the Leader role
      */
-    public boolean isLeader(UUID playerUUID) {
-        MemberProfile profile = this.members.get(playerUUID);
-        return profile != null && profile.getTitle() == FactionTitle.LEADER;
+    public boolean isLeader(UUID uuid) {
+        FactionParticipant participant = this.participants.get(uuid);
+        return participant != null && participant.isLeader();
+    }
+
+    /**
+     * Sets whether a participant currently holds a Leader role. Does
+     * nothing if the given UUID isn't a current participant.
+     *
+     * @param uuid the participant to update
+     * @param leader the new leader status
+     */
+    public void setLeader(UUID uuid, boolean leader) {
+        FactionParticipant participant = this.participants.get(uuid);
+        if (participant != null) {
+            participant.setLeader(leader);
+        }
     }
 
     /**
@@ -255,10 +284,7 @@ public class Faction {
 
     /**
      * Trims this faction's activity log down to the given cap, discarding
-     * the oldest entries first, without adding a new one. Used both after
-     * appending a new entry, and to immediately re-apply a lowered cap
-     * after a config change, rather than waiting for the faction's next
-     * activity to catch up.
+     * the oldest entries first, without adding a new one.
      *
      * @param cap the maximum number of entries to retain
      */

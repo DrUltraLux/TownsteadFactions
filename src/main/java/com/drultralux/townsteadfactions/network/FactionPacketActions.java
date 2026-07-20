@@ -23,4 +23,12 @@ public final class FactionPacketActions {
     public static final String FACTION_LOG_REQUEST_MORE = "faction_log_request_more";
     /** S2C: a batch of older activity log entries for a faction, in response to a request. */
     public static final String FACTION_LOG_MORE = "faction_log_more";
+    /** C2S: cast a choice on an active leadership vote. */
+    public static final String FACTION_VOTE_CAST = "faction_vote_cast";
+    /** C2S: the sending player requests to self-nominate for a leadership vote (non-Capitals only). */
+    public static final String FACTION_VOTE_REQUEST_LEADERSHIP = "faction_vote_request_leadership";
+    /** C2S: a leader nominates a different faction member for leadership (non-Capitals only). */
+    public static final String FACTION_LEADERSHIP_NOMINATE = "faction_leadership_nominate";
+    /** C2S: a leader voluntarily resigns their role. */
+    public static final String FACTION_LEADERSHIP_RESIGN = "faction_leadership_resign";
 }

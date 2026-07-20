@@ -2,10 +2,13 @@ package com.drultralux.townsteadfactions.territory;
 
 import com.aetherianartificer.townstead.villager.TownsteadVillagerState;
 import com.drultralux.townsteadfactions.config.ModConfig;
-import com.drultralux.townsteadfactions.factions.TitleManager;
+import com.drultralux.townsteadfactions.factions.FactionManager;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
-import com.drultralux.townsteadfactions.factions.FactionManager;
+import com.drultralux.townsteadfactions.factions.FactionTitle;
+import com.drultralux.townsteadfactions.factions.TitleManager;
+import com.drultralux.townsteadfactions.integration.optional.CapitalsIntegration;
+import net.conczin.mca.registry.ProfessionsMCA;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import net.conczin.mca.entity.VillagerEntityMCA;
 import net.conczin.mca.server.world.data.Village;
@@ -106,20 +109,18 @@ public class VillageCensusTicker {
 
             String displayName = villager.getName().getString();
             String rootDisplayName = OriginManager.getCleanName(rootId);
-            String title = TitleManager.getResolvedVillagerTitle(villager);
+            FactionTitle title = FactionTitle.valueOf(resolveTitleName(TitleManager.getResolvedVillagerTitle(villager)));
 
-            VillagerFactionSavedData.VillagerRecord previousRecord = VillagerFactionRegistry.getRecord(villagerUUID);
-            VillagerFactionRegistry.assignVillager(villagerUUID,
-                    new VillagerFactionSavedData.VillagerRecord(factionId, displayName, rootDisplayName, title));
+            String previousFactionId = FactionManager.getInstance().assignVillagerToFaction(villagerUUID, factionId, displayName, rootDisplayName, title);
 
-            if (previousRecord == null) {
+            if (previousFactionId == null) {
                 FactionManager.logFactionAction(factionId, displayName + " was registered as a villager of this faction.");
-            } else if (!previousRecord.factionId().equals(factionId)) {
-                FactionManager.logFactionAction(factionId, displayName + " joined as a villager (formerly of " + previousRecord.factionId() + ").");
-                FactionManager.logFactionAction(previousRecord.factionId(), displayName + " left to join " + factionId + ".");
+            } else if (!previousFactionId.equals(factionId)) {
+                FactionManager.logFactionAction(factionId, displayName + " joined as a villager (formerly of " + previousFactionId + ").");
+                FactionManager.logFactionAction(previousFactionId, displayName + " left to join " + factionId + ".");
             }
 
-            populationByFaction.merge(factionId, 1, Integer::sum);
+            populationByFaction.merge(factionId, computeVillagerWeight(villager), Integer::sum);
         }
 
         if (!populationByFaction.isEmpty()) {
@@ -132,6 +133,52 @@ public class VillageCensusTicker {
         }
 
         LogManager.debug("Census: processed village '" + entry.key + "' (" + entry.village.getPopulation() + " residents).");
+    }
+
+    /**
+     * Computes a villager's weight toward their faction's village-control
+     * score: a Noble or Monarch (real Capitals rank) is worth 5, a Guard
+     * or Archer (MCA profession) is worth 2, and everyone else is worth
+     * the base 1. This is the only place this weighting is applied —
+     * everything downstream ({@link VillageControlManager}) just compares
+     * whatever totals it's handed, with no awareness of what the numbers
+     * represent.
+     *
+     * @param villager the villager to weigh
+     * @return the villager's weight toward their faction's control score
+     */
+    private static int computeVillagerWeight(VillagerEntityMCA villager) {
+        if (CapitalsIntegration.isIntegrationFunctional()) {
+            FactionTitle rank = CapitalsIntegration.resolveTitle(villager.getUUID());
+            if (rank == FactionTitle.NOBLE || rank == FactionTitle.MONARCH) {
+                return 5;
+            }
+        }
+
+        var profession = villager.getVillagerData().getProfession();
+        if (profession == ProfessionsMCA.GUARD || profession == ProfessionsMCA.ARCHER) {
+            return 2;
+        }
+
+        return 1;
+    }
+
+    /**
+     * Resolves a display-title string (as produced by
+     * {@link TitleManager#getResolvedVillagerTitle}) back to its matching
+     * {@link FactionTitle} enum constant, since the caching layer stores
+     * the enum rather than the formatted display string.
+     *
+     * @param displayName the resolved display title text
+     * @return the matching {@link FactionTitle}, or {@link FactionTitle#VILLAGER} if none matches
+     */
+    private static String resolveTitleName(String displayName) {
+        for (FactionTitle candidate : FactionTitle.values()) {
+            if (candidate.getDisplayName().equals(displayName)) {
+                return candidate.name();
+            }
+        }
+        return FactionTitle.VILLAGER.name();
     }
 
     /**

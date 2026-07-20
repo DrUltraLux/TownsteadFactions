@@ -6,8 +6,11 @@ import com.drultralux.townsteadfactions.client.screen.widget.DraggableWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.GlobalFactionsWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.PlayerModelWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.ResourceDisplayWidget;
+import com.drultralux.townsteadfactions.client.ClientFactionCache;
+import com.drultralux.townsteadfactions.client.screen.widget.LeadershipManagementWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.RosterDisplayWidget;
 import com.drultralux.townsteadfactions.client.screen.widget.TabPanelWidget;
+import com.drultralux.townsteadfactions.client.screen.widget.VotingWidget;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.EditBox;
@@ -164,6 +167,12 @@ public class FactionScreen extends Screen {
     /** The activity log widget instance. */
     private ActivityLogWidget activityWidget;
 
+    /** The voting widget instance. */
+    private VotingWidget votingWidget;
+
+    /** The leadership management widget instance, only ever placed on the conditional Leadership tab. */
+    private LeadershipManagementWidget leadershipWidget;
+
     /** The active tab-rename text field, or {@code null} if no rename is in progress. */
     private EditBox tabRenameBox = null;
 
@@ -215,12 +224,24 @@ public class FactionScreen extends Screen {
         this.globalWidget = new GlobalFactionsWidget(mainX + 20 + ModConfig.CLIENT.getInteger("globalWidgetX", -100), mainY + 40 + ModConfig.CLIENT.getInteger("globalWidgetY", 10));
         this.avatarWidget = new PlayerModelWidget(mainX + 20 + ModConfig.CLIENT.getInteger("avatarWidgetX", 20), mainY + 40 + ModConfig.CLIENT.getInteger("avatarWidgetY", -10));
         this.activityWidget = new ActivityLogWidget(mainX + 20 + ModConfig.CLIENT.getInteger("activityWidgetX", -40), mainY + 40 + ModConfig.CLIENT.getInteger("activityWidgetY", 90));
+        this.votingWidget = new VotingWidget(mainX + 20 + ModConfig.CLIENT.getInteger("votingWidgetX", 250), mainY + 40 + ModConfig.CLIENT.getInteger("votingWidgetY", -30));
+        this.leadershipWidget = new LeadershipManagementWidget(mainX + 40, mainY + 40);
 
         placeWidget(this.treasuryWidget, "treasuryWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
         placeWidget(this.rosterWidget, "rosterWidgetTabId", TabManager.DEFAULT_TAB_ROSTER);
         placeWidget(this.globalWidget, "globalWidgetTabId", TabManager.DEFAULT_TAB_GLOBAL);
         placeWidget(this.avatarWidget, "avatarWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
         placeWidget(this.activityWidget, "activityWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
+        placeWidget(this.votingWidget, "votingWidgetTabId", TabManager.DEFAULT_TAB_OVERVIEW);
+
+        // The Leadership tab may already exist at this point if it was open and got persisted
+        // into customizedTabOrder on a previous session's close — in that case it's restored by
+        // loadFromEncoded() above, before this method ever ran, so the render()-time sync logic
+        // (which only fires when the tab is freshly created this session) never gets a chance to
+        // attach the widget to it. Handle that "already existed on load" case explicitly here.
+        if (TabManager.findTab(TabManager.DEFAULT_TAB_LEADERSHIP) != null) {
+            TabManager.moveWidgetToTab(this.leadershipWidget, TabManager.DEFAULT_TAB_LEADERSHIP);
+        }
     }
 
     /**
@@ -333,6 +354,11 @@ public class FactionScreen extends Screen {
      */
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTicks) {
+        boolean justCreatedLeadershipTab = TabManager.syncLeadershipTabVisibility(ClientFactionCache.isLocalPlayerLeader());
+        if (justCreatedLeadershipTab) {
+            TabManager.moveWidgetToTab(this.leadershipWidget, TabManager.DEFAULT_TAB_LEADERSHIP);
+        }
+
         int overlayTopColor = 0xC0101010;
         int overlayBottomColor = 0xD00A0A0A;
         graphics.fillGradient(0, 0, this.width, this.height, overlayTopColor, overlayBottomColor);
@@ -355,9 +381,9 @@ public class FactionScreen extends Screen {
 
         TabManager.layoutHeaders(mainX, mainY, this.font);
         String activeTabId = TabManager.getActiveTabId();
-        boolean closeable = TabManager.getTabs().size() > 1;
         for (TabPanelWidget tab : TabManager.getTabs()) {
             if (!tab.getId().equals(this.renamingTabId)) {
+                boolean closeable = !TabManager.isProtectedTab(tab.getId()) && TabManager.getRegularTabCount() > 1;
                 tab.renderHeader(graphics, this.font, tab.getId().equals(activeTabId), closeable);
             }
         }
@@ -860,6 +886,7 @@ public class FactionScreen extends Screen {
                 this.globalWidget.getX() - mainX - 20, this.globalWidget.getY() - mainY - 40, findWidgetTabId(this.globalWidget),
                 this.avatarWidget.getX() - mainX - 20, this.avatarWidget.getY() - mainY - 40, findWidgetTabId(this.avatarWidget),
                 this.activityWidget.getX() - mainX - 20, this.activityWidget.getY() - mainY - 40, findWidgetTabId(this.activityWidget),
+                this.votingWidget.getX() - mainX - 20, this.votingWidget.getY() - mainY - 40, findWidgetTabId(this.votingWidget),
                 this.boxWidth, this.boxHeight,
                 this.windowOffsetX, this.windowOffsetY,
                 TabManager.getTabs()

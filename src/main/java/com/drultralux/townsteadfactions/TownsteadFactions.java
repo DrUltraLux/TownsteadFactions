@@ -5,6 +5,9 @@ import com.drultralux.townsteadfactions.client.screen.ScreenLayoutSaver;
 import com.drultralux.townsteadfactions.events.ClientModEvents;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.events.FactionServerEvents;
+import com.drultralux.townsteadfactions.factions.FactionManager;
+import com.drultralux.townsteadfactions.factions.voting.LeadershipManager;
+import com.drultralux.townsteadfactions.factions.voting.VoteChoice;
 import com.drultralux.townsteadfactions.network.FactionPacketActions;
 import com.drultralux.townsteadfactions.network.FactionPacketDispatcher;
 import com.drultralux.townsteadfactions.network.FactionPacketManager;
@@ -77,6 +80,34 @@ public class TownsteadFactions {
 
         FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_LOG_REQUEST_MORE, (player, data) ->
                 FactionPacketManager.sendMoreActivityLog(player, data.getString("factionId"), data.getLong("beforeTimestamp")));
+
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_VOTE_CAST, (player, data) -> {
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId == null) return;
+            java.util.UUID voteId = data.getUUID("voteId");
+            VoteChoice choice = VoteChoice.valueOf(data.getString("choice"));
+            LeadershipManager.castVote(voteId, player.getUUID(), choice, player.getServer());
+            FactionPacketManager.broadcastFactionDelta(factionId, player.getServer());
+        });
+
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_VOTE_REQUEST_LEADERSHIP, (player, data) -> {
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId == null) return;
+            LeadershipManager.requestLeadership(factionId, player.getUUID(), player.getServer());
+        });
+
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_LEADERSHIP_NOMINATE, (player, data) -> {
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId == null) return;
+            java.util.UUID targetUUID = data.getUUID("targetUUID");
+            com.drultralux.townsteadfactions.factions.voting.LeadershipManager.nominateForLeadership(factionId, player.getUUID(), targetUUID, player.getServer());
+        });
+
+        FactionPacketDispatcher.registerC2SHandler(FactionPacketActions.FACTION_LEADERSHIP_RESIGN, (player, data) -> {
+            String factionId = FactionManager.getPlayerFactionId(player.getUUID());
+            if (factionId == null) return;
+            com.drultralux.townsteadfactions.factions.voting.LeadershipManager.resignLeadership(factionId, player.getUUID(), player.getServer());
+        });
 
         if (FMLEnvironment.dist == Dist.CLIENT) {
             modEventBus.register(ClientModEvents.ClientModBusEvents.class);

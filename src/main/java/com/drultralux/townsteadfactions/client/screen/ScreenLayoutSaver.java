@@ -37,6 +37,9 @@ public class ScreenLayoutSaver {
      * @param lx activity log widget x position
      * @param ly activity log widget y position
      * @param lTabId activity log widget's assigned tab ID
+     * @param vx voting widget x position
+     * @param vy voting widget y position
+     * @param vTabId voting widget's assigned tab ID
      * @param boxW main dashboard window width
      * @param boxH main dashboard window height
      * @param boxOffsetX the window's horizontal drag offset from its default centered position
@@ -49,6 +52,7 @@ public class ScreenLayoutSaver {
             int gx, int gy, String gTabId,
             int ax, int ay, String aTabId,
             int lx, int ly, String lTabId,
+            int vx, int vy, String vTabId,
             int boxW, int boxH,
             int boxOffsetX, int boxOffsetY,
             List<TabPanelWidget> tabs) {
@@ -72,6 +76,10 @@ public class ScreenLayoutSaver {
             setAgnosticValue("activityWidgetX", lx);
             setAgnosticValue("activityWidgetY", ly);
             setAgnosticValue("activityWidgetTabId", lTabId);
+
+            setAgnosticValue("votingWidgetX", vx);
+            setAgnosticValue("votingWidgetY", vy);
+            setAgnosticValue("votingWidgetTabId", vTabId);
 
             setAgnosticValue("mainBoxWidth", boxW);
             setAgnosticValue("mainBoxHeight", boxH);

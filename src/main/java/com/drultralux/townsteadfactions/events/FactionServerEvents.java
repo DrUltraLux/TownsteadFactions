@@ -14,8 +14,10 @@ import com.drultralux.townsteadfactions.titles.TitlePreferenceSavedData;
 import com.drultralux.townsteadfactions.territory.VillageControlManager;
 import com.drultralux.townsteadfactions.territory.VillageControlSavedData;
 import com.drultralux.townsteadfactions.territory.VillageCensusTicker;
-import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
-import com.drultralux.townsteadfactions.territory.VillagerFactionSavedData;
+import com.drultralux.townsteadfactions.factions.voting.LeadershipManager;
+import com.drultralux.townsteadfactions.factions.voting.MonarchElevationTicker;
+import com.drultralux.townsteadfactions.factions.voting.VoteManager;
+import com.drultralux.townsteadfactions.factions.voting.VoteSavedData;
 import net.conczin.mca.entity.VillagerEntityMCA;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.minecraft.nbt.CompoundTag;
@@ -29,6 +31,7 @@ import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.minecraft.server.level.ServerLevel;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Registers and handles all server-side lifecycle events for Townstead
@@ -61,6 +64,8 @@ public class FactionServerEvents {
         gameBus.addListener(FactionServerEvents::onPlayerLoggedOut);
         gameBus.addListener(VillageCensusTicker::onServerTick);
         gameBus.addListener(FactionServerEvents::onVillagerDeath);
+        gameBus.addListener(LeadershipManager::onServerTick);
+        gameBus.addListener(MonarchElevationTicker::onServerTick);
         LogManager.info("Successfully centralized and registered all faction gameplay lifecycle listeners.");
     }
 
@@ -146,16 +151,6 @@ public class FactionServerEvents {
             );
             TitlePreferenceManager.setStorageInstance(titlePreferenceData);
 
-            VillagerFactionSavedData villagerFactionData = storageManager.computeIfAbsent(
-                    new SavedData.Factory<>(
-                            VillagerFactionSavedData::new,
-                            VillagerFactionSavedData::load,
-                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
-                    ),
-                    "townsteadfactions_villagerfactions"
-            );
-            VillagerFactionRegistry.setStorageInstance(villagerFactionData);
-
             VillageControlSavedData villageControlData = storageManager.computeIfAbsent(
                     new SavedData.Factory<>(
                             VillageControlSavedData::new,
@@ -165,6 +160,16 @@ public class FactionServerEvents {
                     "townsteadfactions_villagecontrol"
             );
             VillageControlManager.setStorageInstance(villageControlData);
+
+            VoteSavedData voteData = storageManager.computeIfAbsent(
+                    new SavedData.Factory<>(
+                            VoteSavedData::new,
+                            VoteSavedData::load,
+                            DataFixTypes.SAVED_DATA_COMMAND_STORAGE
+                    ),
+                    "townsteadfactions_votes"
+            );
+            VoteManager.setStorageInstance(voteData);
 
             if (savedData.rawLoadedTag != null && savedData.rawLoadedTag.contains("factions", 10)) {
                 LogManager.info("Persistent world records found. Initiating secure database recovery merge...");
@@ -229,7 +234,15 @@ public class FactionServerEvents {
      */
     public static void onVillagerDeath(LivingDeathEvent event) {
         if (event.getEntity() instanceof VillagerEntityMCA villager) {
-            VillagerFactionRegistry.removeVillager(villager.getUUID());
+            UUID villagerUUID = villager.getUUID();
+            String factionId = FactionManager.getParticipantFactionId(villagerUUID);
+            String displayName = villager.getName().getString();
+
+            FactionManager.removeParticipant(villagerUUID);
+
+            if (factionId != null) {
+                FactionManager.logFactionAction(factionId, displayName + " has died.");
+            }
         }
     }
 }

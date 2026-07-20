@@ -1,15 +1,20 @@
 package com.drultralux.townsteadfactions.network;
 
 import com.drultralux.townsteadfactions.factions.FactionManager;
+import com.drultralux.townsteadfactions.factions.FactionParticipant;
 import com.drultralux.townsteadfactions.factions.FactionTitle;
 import com.drultralux.townsteadfactions.factions.TitleManager;
+import com.drultralux.townsteadfactions.factions.voting.LeadershipManager;
+import com.drultralux.townsteadfactions.factions.voting.VoteManager;
+import com.drultralux.townsteadfactions.factions.voting.VoteRecord;
+import com.drultralux.townsteadfactions.integration.optional.CapitalsIntegration;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
 import com.drultralux.townsteadfactions.network.payload.FactionS2CPayload;
 import com.drultralux.townsteadfactions.territory.VillageControlManager;
-import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
 import com.drultralux.townsteadfactions.layout.LayoutResetManager;
 import com.drultralux.townsteadfactions.factions.ActivityLogEntry;
 import java.util.List;
+import java.util.Map;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
 import net.minecraft.server.MinecraftServer;
@@ -70,8 +75,10 @@ public class FactionPacketManager {
     /**
      * Sends a single faction's updated state to every currently connected
      * player, tagged as {@link FactionPacketActions#FACTION_SYNC_DELTA}.
-     * Far cheaper than a full re-sync when only one faction's data has
-     * changed.
+     * Built once and sent identically to everyone — vote entries only
+     * ever carry who's participated (not what they chose) and who's
+     * eligible, both of which are safe to share identically, so no
+     * per-recipient rebuild is needed.
      *
      * @param factionId the faction whose data changed
      * @param server the server, used to resolve member usernames/origins and the player list
@@ -121,11 +128,14 @@ public class FactionPacketManager {
 
     /**
      * Builds an NBT snapshot of a single faction's ID, display name,
-     * resources, and member roster. Each roster entry carries the
-     * member's real UUID, display name, origin, and resolved title.
+     * resources, member/villager rosters, activity log, and every
+     * currently active leadership vote. Identical for every recipient —
+     * vote entries expose who's currently eligible and who's already
+     * participated, but never what anyone actually chose, so choices stay
+     * fully private while still avoiding a per-recipient rebuild.
      *
      * @param factionId the faction to snapshot
-     * @param server the server, used to resolve member usernames/origins; may be {@code null}
+     * @param server the server, used to resolve member usernames/origins/votes; may be {@code null}
      * @return the faction's snapshot as an NBT compound tag
      */
     private static CompoundTag buildFactionSnapshot(String factionId, MinecraftServer server) {
@@ -136,8 +146,9 @@ public class FactionPacketManager {
         snapshot.putInt("cogs", FactionManager.getFactionAsset(factionId, "cogs"));
         snapshot.putInt("food", FactionManager.getFactionAsset(factionId, "food"));
         snapshot.putInt("mana", FactionManager.getFactionAsset(factionId, "mana"));
-        snapshot.putInt("villagerCount", VillagerFactionRegistry.getVillagerCountForFaction(factionId));
+        snapshot.putInt("villagerCount", FactionManager.getVillagerCountForFaction(factionId));
         snapshot.putInt("controlledVillages", VillageControlManager.getControlledVillageCount(factionId));
+        snapshot.putBoolean("capitalsFunctional", CapitalsIntegration.isIntegrationFunctional());
 
         List<ActivityLogEntry> recentLog = FactionManager.getRecentActivityLog(factionId, 30);
         ListTag activityLogList = new ListTag();
@@ -158,23 +169,113 @@ public class FactionPacketManager {
             memberTag.putUUID("uuid", memberUuid);
             memberTag.putString("name", resolveUsername(memberUuid, server));
             memberTag.putString("root", OriginManager.getDisplayRootName(memberUuid, onlineMember));
-            memberTag.putString("title", TitleManager.getResolvedTitleName(memberUuid, FactionTitle.MEMBER));
+            memberTag.putString("title", FactionManager.isLeader(factionId, memberUuid) ? FactionTitle.LEADER.getDisplayName() : TitleManager.getResolvedTitleName(memberUuid, FactionTitle.MEMBER));
+            memberTag.putBoolean("isLeader", FactionManager.isLeader(factionId, memberUuid));
             membersList.add(memberTag);
         }
         snapshot.put("members", membersList);
 
         ListTag villagerRosterList = new ListTag();
-        for (var entry : VillagerFactionRegistry.getVillagersForFaction(factionId).entrySet()) {
-            var record = entry.getValue();
+        for (Map.Entry<UUID, FactionParticipant> entry : FactionManager.getVillagersForFaction(factionId).entrySet()) {
+            FactionParticipant participant = entry.getValue();
             CompoundTag villagerTag = new CompoundTag();
             villagerTag.putUUID("uuid", entry.getKey());
-            villagerTag.putString("name", record.name());
-            villagerTag.putString("root", record.root());
-            villagerTag.putString("title", record.title());
+            villagerTag.putString("name", participant.getCachedName());
+            villagerTag.putString("root", participant.getCachedRootId());
+            villagerTag.putString("title", participant.isLeader() ? FactionTitle.LEADER.getDisplayName() : participant.getCachedTitle().getDisplayName());
+            villagerTag.putBoolean("isLeader", participant.isLeader());
             villagerRosterList.add(villagerTag);
         }
         snapshot.put("villagerRoster", villagerRosterList);
+
+        ListTag votesList = new ListTag();
+        for (VoteRecord vote : VoteManager.getActiveVotesForFaction(factionId)) {
+            votesList.add(buildVoteSnapshot(vote, server));
+        }
+        snapshot.put("activeVotes", votesList);
+
         return snapshot;
+    }
+
+    /**
+     * Builds an NBT snapshot of a single active vote: its identity, the
+     * target's resolved display name/origin, timing, the current public
+     * tally, and the UUIDs of everyone eligible / everyone who's already
+     * cast. Deliberately never includes what anyone actually chose — only
+     * that a given UUID has participated — so a client can check its own
+     * status locally while every other player's choice, and even whether
+     * they've voted at all, is never rendered anywhere.
+     *
+     * @param vote the vote to snapshot
+     * @param server the server, used to resolve the target's identity and the tally
+     * @return the vote's snapshot as an NBT compound tag
+     */
+    private static CompoundTag buildVoteSnapshot(VoteRecord vote, MinecraftServer server) {
+        CompoundTag voteTag = new CompoundTag();
+        voteTag.putUUID("voteId", vote.getVoteId());
+        voteTag.putString("type", vote.getType().name());
+        voteTag.putUUID("targetUUID", vote.getTargetUUID());
+        voteTag.putString("targetName", resolveParticipantDisplayName(vote.getFactionId(), vote.getTargetUUID(), server));
+        voteTag.putString("targetRoot", resolveParticipantDisplayRoot(vote.getFactionId(), vote.getTargetUUID(), server));
+        voteTag.putLong("expiryTimestamp", vote.getExpiryTimestamp());
+
+        LeadershipManager.PublicTally tally = LeadershipManager.getPublicTally(vote, server);
+        voteTag.putInt("yesCount", tally.yes());
+        voteTag.putInt("noCount", tally.no());
+        voteTag.putInt("totalEligibleVoters", tally.totalEligible());
+
+        ListTag votedUUIDs = new ListTag();
+        for (UUID votedPlayer : vote.getPlayerVotes().keySet()) {
+            votedUUIDs.add(net.minecraft.nbt.NbtUtils.createUUID(votedPlayer));
+        }
+        voteTag.put("votedUUIDs", votedUUIDs);
+
+        ListTag eligibleUUIDs = new ListTag();
+        for (UUID eligibleParticipant : LeadershipManager.getEligibleVoterUUIDs(vote, server)) {
+            eligibleUUIDs.add(net.minecraft.nbt.NbtUtils.createUUID(eligibleParticipant));
+        }
+        voteTag.put("eligibleUUIDs", eligibleUUIDs);
+
+        return voteTag;
+    }
+
+    /**
+     * Resolves a participant's display name for use in a vote snapshot —
+     * a villager's cached name, or a player's resolved username.
+     *
+     * @param factionId the faction the participant belongs to
+     * @param uuid the participant to resolve
+     * @param server the server, used to resolve an online/offline player's name
+     * @return the resolved display name
+     */
+    private static String resolveParticipantDisplayName(String factionId, UUID uuid, MinecraftServer server) {
+        for (FactionParticipant participant : FactionManager.getAllParticipants(factionId)) {
+            if (participant.getUUID().equals(uuid)) {
+                if (participant.isVillager()) return participant.getCachedName();
+                return resolveUsername(uuid, server);
+            }
+        }
+        return "Unknown";
+    }
+
+    /**
+     * Resolves a participant's display origin for use in a vote snapshot
+     * — a villager's cached origin, or a player's currently-known origin.
+     *
+     * @param factionId the faction the participant belongs to
+     * @param uuid the participant to resolve
+     * @param server the server, used to resolve an online player
+     * @return the resolved origin display name
+     */
+    private static String resolveParticipantDisplayRoot(String factionId, UUID uuid, MinecraftServer server) {
+        for (FactionParticipant participant : FactionManager.getAllParticipants(factionId)) {
+            if (participant.getUUID().equals(uuid)) {
+                if (participant.isVillager()) return participant.getCachedRootId();
+                ServerPlayer online = (server != null) ? server.getPlayerList().getPlayer(uuid) : null;
+                return OriginManager.getDisplayRootName(uuid, online);
+            }
+        }
+        return "Unknown";
     }
 
     /**
@@ -187,13 +288,6 @@ public class FactionPacketManager {
      * @return the resolved username, or {@code "Unknown Member"} if it can't be resolved
      */
     private static String resolveUsername(UUID memberUuid, MinecraftServer server) {
-        if (memberUuid == null || server == null) return "Unknown Member";
-
-        ServerPlayer onlineMember = server.getPlayerList().getPlayer(memberUuid);
-        if (onlineMember != null) {
-            return onlineMember.getName().getString();
-        }
-        var profile = server.getProfileCache().get(memberUuid);
-        return profile.map(com.mojang.authlib.GameProfile::getName).orElse("Unknown Member");
+        return FactionManager.resolvePlayerDisplayName(server, memberUuid);
     }
 }

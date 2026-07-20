@@ -36,6 +36,33 @@ public final class TabManager {
     /** The stable ID of the default "Global" tab. */
     public static final String DEFAULT_TAB_GLOBAL = "global";
 
+    /** The stable ID of the conditional "Leadership" tab, only present while the viewer is currently a leader. */
+    public static final String DEFAULT_TAB_LEADERSHIP = "leadership";
+
+    /**
+     * Checks whether a tab is protected — exempt from being manually
+     * closed, and exempt from counting toward the "at least one regular
+     * tab must always remain" minimum. Currently only the conditional
+     * Leadership tab is protected; any future non-deletable conditional
+     * tabs should be added to this check too.
+     *
+     * @param tabId the tab ID to check
+     * @return {@code true} if this tab is protected
+     */
+    public static boolean isProtectedTab(String tabId) {
+        return DEFAULT_TAB_LEADERSHIP.equals(tabId);
+    }
+
+    /**
+     * Counts how many non-protected (regular, user-manageable) tabs
+     * currently exist.
+     *
+     * @return the regular tab count
+     */
+    public static long getRegularTabCount() {
+        return tabs.stream().filter(t -> !isProtectedTab(t.getId())).count();
+    }
+
     /** The tabs currently making up the dashboard, in display order. */
     private static final List<TabPanelWidget> tabs = new ArrayList<>();
 
@@ -94,9 +121,31 @@ public final class TabManager {
      */
     public static boolean removeTab(String tabId) {
         TabPanelWidget target = findTab(tabId);
-        if (target == null || tabs.size() <= 1) return false;
+        if (target == null) return false;
 
-        TabPanelWidget fallback = (tabs.get(0) == target) ? tabs.get(1) : tabs.get(0);
+        // Only regular tabs count toward the "must keep at least one" minimum — removing a
+        // protected tab (e.g. Leadership, when resigning) is never blocked by this check.
+        if (!isProtectedTab(tabId) && getRegularTabCount() <= 1) return false;
+
+        // Prefer a regular tab as the destination for the removed tab's widgets, so they never
+        // land on a conditional tab that could later disappear on its own (e.g. Leadership).
+        TabPanelWidget fallback = null;
+        for (TabPanelWidget candidate : tabs) {
+            if (candidate != target && !isProtectedTab(candidate.getId())) {
+                fallback = candidate;
+                break;
+            }
+        }
+        if (fallback == null) {
+            for (TabPanelWidget candidate : tabs) {
+                if (candidate != target) {
+                    fallback = candidate;
+                    break;
+                }
+            }
+        }
+        if (fallback == null) return false;
+
         for (DraggableWidget widget : new ArrayList<>(target.getComponents())) {
             target.removeWidget(widget);
             fallback.addWidget(widget);
@@ -270,8 +319,8 @@ public final class TabManager {
      * @return the outcome of the click
      */
     public static HeaderClickOutcome handleHeaderClick(double mouseX, double mouseY) {
-        boolean closeable = tabs.size() > 1;
         for (TabPanelWidget tab : tabs) {
+            boolean closeable = !isProtectedTab(tab.getId()) && getRegularTabCount() > 1;
             switch (tab.mouseClicked(mouseX, mouseY, closeable)) {
                 case SELECTED -> {
                     setActiveTab(tab.getId());
@@ -302,6 +351,30 @@ public final class TabManager {
         tabs.add(new TabPanelWidget(DEFAULT_TAB_ROSTER, "Roster"));
         tabs.add(new TabPanelWidget(DEFAULT_TAB_GLOBAL, "Global"));
         activeTabId = DEFAULT_TAB_OVERVIEW;
+    }
+
+    /**
+     * Ensures the Leadership tab exists if it currently should be
+     * visible, or removes it if it shouldn't — cheap to call every
+     * frame, since it's a no-op once the tab's presence already matches
+     * the desired state. Deliberately not part of the default tab set
+     * created by {@link #installDefaultLayout} — this tab only exists at
+     * all while the viewer is currently a leader.
+     *
+     * @param shouldBeVisible whether the Leadership tab should currently exist
+     * @return {@code true} if the tab was just newly created by this call,
+     *         so the caller knows to place its widget onto it for the first time
+     */
+    public static boolean syncLeadershipTabVisibility(boolean shouldBeVisible) {
+        boolean exists = findTab(DEFAULT_TAB_LEADERSHIP) != null;
+        if (shouldBeVisible && !exists) {
+            tabs.add(new TabPanelWidget(DEFAULT_TAB_LEADERSHIP, "Leadership"));
+            return true;
+        }
+        if (!shouldBeVisible && exists) {
+            removeTab(DEFAULT_TAB_LEADERSHIP);
+        }
+        return false;
     }
 
     /**

@@ -3,10 +3,9 @@ package com.drultralux.townsteadfactions.factions;
 import com.drultralux.townsteadfactions.utils.LogManager;
 import com.drultralux.townsteadfactions.config.ModConfig;
 import com.drultralux.townsteadfactions.integration.required.OriginManager;
-import com.drultralux.townsteadfactions.territory.VillagerFactionRegistry;
+import com.drultralux.townsteadfactions.territory.VillageControlManager;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtUtils;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Iterator;
@@ -15,12 +14,18 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.HashSet;
+import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerPlayer;
 import java.util.Set;
 
 /**
  * Manages the lifecycle of all active factions on the server: creating
  * them from configuration, loading and reconciling them with saved world
- * data, assigning players, and applying resource changes.
+ * data, assigning players and villagers, and applying resource changes.
+ *
+ * <p>The sole gateway for touching {@link Faction} data — nothing else in
+ * the project should hold, construct, or mutate a {@code Faction}
+ * instance directly.</p>
  */
 public class FactionManager {
 
@@ -66,7 +71,7 @@ public class FactionManager {
             }
 
             if (!validOrigins.isEmpty()) {
-                Faction factionInstance = new Faction(cleanFactionId, cleanFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
+                Faction factionInstance = new Faction(cleanFactionId, cleanFactionId);
                 factionInstance.setValidOrigins(validOrigins);
                 freshFactions.put(cleanFactionId, factionInstance);
             } else {
@@ -81,7 +86,7 @@ public class FactionManager {
      * Rebuilds the active factions map from saved world data, if present,
      * then reconciles it against the current {@code factions.json}
      * configuration so origin changes are picked up without losing saved
-     * state (balances, members, etc). Falls back to a clean
+     * state (balances, participants, etc). Falls back to a clean
      * config-only initialization if no save data exists.
      *
      * @param rootTag the root NBT tag loaded from the world save, or {@code null} if none exists
@@ -105,14 +110,10 @@ public class FactionManager {
             String cleanId = factionId.trim();
             CompoundTag factionTag = factionsCompound.getCompound(factionId);
 
-            Faction faction = new Faction(cleanId, factionTag.getString("displayName"), new UUID(0, 0));
+            Faction faction = new Faction(cleanId, factionTag.getString("displayName"));
             faction.setCogs(factionTag.getInt("cogs"));
             faction.setFood(factionTag.getInt("food"));
             faction.setMana(factionTag.getInt("mana"));
-
-            if (factionTag.hasUUID("leaderUUID")) {
-                faction.setLeaderUUID(factionTag.getUUID("leaderUUID"));
-            }
 
             if (factionTag.contains("activityLog", 9)) { // 9 is ListTag
                 ListTag logList = factionTag.getList("activityLog", 10); // 10 is CompoundTag
@@ -122,19 +123,33 @@ public class FactionManager {
                 }
             }
 
-            if (factionTag.contains("members", 9)) { // 9 is ListTag
-                ListTag membersList = factionTag.getList("members", 10); // 10 is CompoundTag
-                for (int j = 0; j < membersList.size(); j++) {
-                    CompoundTag memberTag = membersList.getCompound(j);
-                    UUID memberUuid = memberTag.getUUID("uuid");
-                    FactionTitle savedTitle;
+            if (factionTag.contains("participants", 9)) { // 9 is ListTag
+                ListTag participantsList = factionTag.getList("participants", 10); // 10 is CompoundTag
+                for (int j = 0; j < participantsList.size(); j++) {
+                    CompoundTag participantTag = participantsList.getCompound(j);
                     try {
-                        savedTitle = FactionTitle.valueOf(memberTag.getString("title"));
+                        UUID uuid = participantTag.getUUID("uuid");
+                        boolean isPlayer = participantTag.getBoolean("isPlayer");
+                        boolean leader = participantTag.getBoolean("leader");
+
+                        if (isPlayer) {
+                            long joinTimestamp = participantTag.getLong("joinTimestamp");
+                            faction.restorePlayerParticipant(uuid, joinTimestamp, leader);
+                        } else {
+                            String name = participantTag.getString("name");
+                            String rootId = participantTag.getString("rootId");
+                            FactionTitle title;
+                            try {
+                                title = FactionTitle.valueOf(participantTag.getString("title"));
+                            } catch (Exception e) {
+                                title = FactionTitle.VILLAGER;
+                                LogManager.warn("Skipping unrecognized saved title for villager " + uuid + " in faction '" + cleanId + "', defaulting to Villager.");
+                            }
+                            faction.restoreVillagerParticipant(uuid, name, rootId, title, leader);
+                        }
                     } catch (Exception e) {
-                        savedTitle = FactionTitle.MEMBER;
-                        LogManager.warn("Skipping unrecognized saved title for member " + memberUuid + " in faction '" + cleanId + "', defaulting to Member.");
+                        LogManager.warn("Skipping malformed saved participant entry at index " + j + " in faction '" + cleanId + "'.");
                     }
-                    faction.restoreMember(new MemberProfile(memberUuid, savedTitle));
                 }
             }
 
@@ -175,7 +190,7 @@ public class FactionManager {
                     }
                 } else if (!validOrigins.isEmpty()) {
                     // A faction exists in config but wasn't in the save file — create it fresh
-                    Faction newFaction = new Faction(configFactionId, configFactionId, UUID.fromString("00000000-0000-0000-0000-000000000000"));
+                    Faction newFaction = new Faction(configFactionId, configFactionId);
                     newFaction.setValidOrigins(validOrigins);
                     this.activeFactions.put(configFactionId, newFaction);
                     LogManager.info("Config Sync: Generated a new tracking block for config entry missing from file: " + configFactionId);
@@ -210,11 +225,60 @@ public class FactionManager {
         }
 
         for (Faction faction : this.activeFactions.values()) {
-            faction.removeMember(playerUUID);
+            faction.removeParticipant(playerUUID);
         }
-        this.activeFactions.get(cleanId).addMember(playerUUID);
+        this.activeFactions.get(cleanId).addPlayerParticipant(playerUUID);
         LogManager.debug("Successfully committed player " + playerUUID + " to faction instance slot: " + cleanId);
         return true;
+    }
+
+    /**
+     * Adds a new villager participant to a faction, or updates their
+     * cached display fields if they're already a participant there. If
+     * they were previously a participant of a different faction, they're
+     * removed from it first.
+     *
+     * @param villagerUUID the villager's UUID
+     * @param factionId the faction to assign them to; does nothing if unknown
+     * @param name the villager's current display name
+     * @param rootId the villager's current origin (root) ID
+     * @param title the villager's current resolved display title
+     * @return the villager's previous faction ID, or {@code null} if they had none (a brand new registration)
+     */
+    public String assignVillagerToFaction(UUID villagerUUID, String factionId, String name, String rootId, FactionTitle title) {
+        if (villagerUUID == null || factionId == null) return null;
+        String cleanId = factionId.trim();
+        Faction targetFaction = this.activeFactions.get(cleanId);
+        if (targetFaction == null) {
+            LogManager.warn("Attempted to assign villager " + villagerUUID + " to unknown faction ID: '" + cleanId + "'");
+            return null;
+        }
+
+        String previousFactionId = getParticipantFactionId(villagerUUID);
+
+        if (previousFactionId != null && !previousFactionId.equals(cleanId)) {
+            Faction previousFaction = this.activeFactions.get(previousFactionId);
+            if (previousFaction != null) {
+                previousFaction.removeParticipant(villagerUUID);
+            }
+        }
+
+        targetFaction.addOrUpdateVillagerParticipant(villagerUUID, name, rootId, title);
+        return previousFactionId;
+    }
+
+    /**
+     * Removes a participant — player or villager — from whichever faction
+     * they currently belong to, if any. Used for villager death/despawn
+     * cleanup.
+     *
+     * @param uuid the participant to remove
+     */
+    public static void removeParticipant(UUID uuid) {
+        if (uuid == null) return;
+        for (Faction faction : getInstance().getActiveFactions().values()) {
+            faction.removeParticipant(uuid);
+        }
     }
 
     /**
@@ -225,9 +289,20 @@ public class FactionManager {
      * @return the player's faction ID, or {@code null} if they're not in any faction
      */
     public static String getPlayerFactionId(UUID playerUUID) {
-        if (playerUUID == null) return null;
+        return getParticipantFactionId(playerUUID);
+    }
+
+    /**
+     * Finds the faction a participant — player or villager — currently
+     * belongs to, by scanning all active factions' rosters.
+     *
+     * @param uuid the UUID of the participant to look up
+     * @return their faction ID, or {@code null} if they're not in any faction
+     */
+    public static String getParticipantFactionId(UUID uuid) {
+        if (uuid == null) return null;
         for (Faction faction : getInstance().getActiveFactions().values()) {
-            if (faction.getMembers().containsKey(playerUUID)) {
+            if (faction.getParticipants().containsKey(uuid)) {
                 return faction.getId();
             }
         }
@@ -258,18 +333,6 @@ public class FactionManager {
     }
 
     /**
-     * Returns the number of members in a faction.
-     *
-     * @param factionId the faction's ID
-     * @return the member count, or {@code 0} if the faction doesn't exist
-     */
-    public static int getFactionMemberCount(String factionId) {
-        if (factionId == null) return 0;
-        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
-        return (faction != null && faction.getMembers() != null) ? faction.getMembers().size() : 0;
-    }
-
-    /**
      * Binds the world save data instance used to flag pending changes for
      * disk persistence.
      *
@@ -277,35 +340,6 @@ public class FactionManager {
      */
     public static void setStorageInstance(FactionSavedData storage) {
         activeStorageInstance = storage;
-    }
-
-    /**
-     * Adjusts a faction's resource balance by a signed amount, clamped to
-     * a minimum of zero, and flags the save data as dirty if bound.
-     *
-     * @param factionId the faction's ID
-     * @param assetType the resource to modify: {@code "cogs"}, {@code "food"}, or {@code "mana"}
-     * @param amount the amount to add (or, if negative, subtract)
-     * @return {@code true} if the change was applied; {@code false} if the faction or asset type is invalid
-     */
-    public static boolean modifyFactionAsset(String factionId, String assetType, int amount) {
-        if (factionId == null || assetType == null) return false;
-        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
-        if (faction == null) return false;
-
-        switch (assetType.toLowerCase()) {
-            case "cogs" -> faction.setCogs(Math.max(0, faction.getCogs() + amount));
-            case "food" -> faction.setFood(Math.max(0, faction.getFood() + amount));
-            case "mana" -> faction.setMana(Math.max(0, faction.getMana() + amount));
-            default -> { return false; }
-        }
-
-        if (activeStorageInstance != null) {
-            activeStorageInstance.setDirty();
-        }
-
-        logFactionAction(factionId, "Resource '" + assetType + "' adjusted by " + amount + ".");
-        return true;
     }
 
     /**
@@ -331,17 +365,165 @@ public class FactionManager {
     }
 
     /**
-     * Returns a defensive copy of a faction's member UUIDs by ID, so
-     * callers can't mutate the live roster.
+     * Returns a defensive copy of a faction's player member UUIDs (only
+     * players, not villagers) by ID, so callers can't mutate the live
+     * roster.
      *
      * @param factionId the faction's ID
-     * @return a copy of the faction's member UUIDs, or an empty list if it doesn't exist
+     * @return a copy of the faction's player member UUIDs, or an empty list if it doesn't exist
      */
     public static List<UUID> getFactionMemberUUIDs(String factionId) {
         if (factionId == null) return List.of();
         Faction faction = getInstance().getActiveFactions().get(factionId.trim());
         if (faction == null) return List.of();
-        return new ArrayList<>(faction.getMembers().keySet());
+
+        List<UUID> result = new ArrayList<>();
+        for (FactionParticipant participant : faction.getParticipants().values()) {
+            if (participant.isPlayer()) {
+                result.add(participant.getUUID());
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Returns how many villagers are currently assigned to a faction.
+     *
+     * @param factionId the faction to count
+     * @return the assigned villager count
+     */
+    public static int getVillagerCountForFaction(String factionId) {
+        if (factionId == null) return 0;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return 0;
+
+        int count = 0;
+        for (FactionParticipant participant : faction.getParticipants().values()) {
+            if (participant.isVillager()) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Returns every villager participant currently assigned to a faction,
+     * keyed by UUID.
+     *
+     * @param factionId the faction to list
+     * @return the assigned villagers, keyed by UUID
+     */
+    public static Map<UUID, FactionParticipant> getVillagersForFaction(String factionId) {
+        Map<UUID, FactionParticipant> result = new HashMap<>();
+        if (factionId == null) return result;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return result;
+
+        for (FactionParticipant participant : faction.getParticipants().values()) {
+            if (participant.isVillager()) {
+                result.put(participant.getUUID(), participant);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Returns every participant — player and villager alike — currently
+     * in a faction.
+     *
+     * @param factionId the faction to list
+     * @return all of the faction's participants
+     */
+    public static List<FactionParticipant> getAllParticipants(String factionId) {
+        if (factionId == null) return List.of();
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction == null) return List.of();
+        return new ArrayList<>(faction.getParticipants().values());
+    }
+
+    /**
+     * Resolves a participant's display name for use in log messages and
+     * similar text — a villager's cached name, or a player's resolved
+     * username (their current online name, falling back to the server's
+     * profile cache if offline).
+     *
+     * @param factionId the faction the participant belongs to
+     * @param uuid the participant to resolve
+     * @param server the server, used to resolve a player's name; may be {@code null}
+     * @return the resolved display name, or the raw UUID string if it can't be resolved
+     */
+    public static String getParticipantDisplayName(String factionId, UUID uuid, MinecraftServer server) {
+        if (factionId == null || uuid == null) return String.valueOf(uuid);
+        for (FactionParticipant participant : getAllParticipants(factionId)) {
+            if (participant.getUUID().equals(uuid)) {
+                if (participant.isVillager()) return participant.getCachedName();
+                return resolvePlayerDisplayName(server, uuid);
+            }
+        }
+        return uuid.toString();
+    }
+
+    /**
+     * Resolves a player's display name: their MCA persona name (as set in
+     * the in-game player editor's General tab), if MCA data for them
+     * exists — MCA's own family-tree lookup already falls back to their
+     * real Minecraft account name internally if they've never customized
+     * it, so this single call correctly covers both cases. Falls back
+     * further to the server's online player list, then its profile
+     * cache, if MCA data can't be read at all for some reason.
+     *
+     * @param server the server, used to look up MCA and Minecraft account data; may be {@code null}
+     * @param playerUUID the player to resolve
+     * @return the resolved display name, or {@code "Unknown Member"} if nothing could be resolved
+     */
+    public static String resolvePlayerDisplayName(MinecraftServer server, UUID playerUUID) {
+        if (server == null || playerUUID == null) return "Unknown Member";
+
+        try {
+            var saveData = net.conczin.mca.server.world.data.PlayerSaveData.get(server.overworld(), playerUUID);
+            String mcaName = saveData.getFamilyEntry().getName();
+            if (mcaName != null && !mcaName.isBlank()) {
+                return mcaName;
+            }
+        } catch (Exception e) {
+            // MCA data unavailable for this player — fall through to the vanilla name sources below.
+        }
+
+        ServerPlayer online = server.getPlayerList().getPlayer(playerUUID);
+        if (online != null) return online.getName().getString();
+        var profile = server.getProfileCache().get(playerUUID);
+        return profile.map(com.mojang.authlib.GameProfile::getName).orElse("Unknown Member");
+    }
+
+    /**
+     * Checks whether a participant currently holds a Leader role in a
+     * specific faction.
+     *
+     * @param factionId the faction to check
+     * @param uuid the participant to check
+     * @return {@code true} if they're a current leader of that faction
+     */
+    public static boolean isLeader(String factionId, UUID uuid) {
+        if (factionId == null || uuid == null) return false;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        return faction != null && faction.isLeader(uuid);
+    }
+
+    /**
+     * Sets whether a participant currently holds a Leader role in a
+     * specific faction. Does nothing if they aren't a participant there.
+     *
+     * @param factionId the faction to update
+     * @param uuid the participant to update
+     * @param leader the new leader status
+     */
+    public static void setLeader(String factionId, UUID uuid, boolean leader) {
+        if (factionId == null || uuid == null) return;
+        Faction faction = getInstance().getActiveFactions().get(factionId.trim());
+        if (faction != null) {
+            faction.setLeader(uuid, leader);
+            if (activeStorageInstance != null) {
+                activeStorageInstance.setDirty();
+            }
+        }
     }
 
     /**
@@ -482,12 +664,13 @@ public class FactionManager {
 
     /**
      * Builds a formatted, multi-line summary of a faction's full state:
-     * ID, leader, resource balances, member count, and allowed origins.
+     * ID, current leaders, resource balances, member count, and allowed
+     * origins.
      *
      * @param factionId the faction's ID
      * @return the formatted summary, or {@code null} if the faction doesn't exist
      */
-    public static String getFactionSummaryString(String factionId) {
+    public static String getFactionSummaryString(String factionId, MinecraftServer server) {
         if (factionId == null) {
             return null;
         }
@@ -506,22 +689,34 @@ public class FactionManager {
             }
         }
 
-        int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;
-        String leaderStr = (faction.getLeaderUUID() != null) ? faction.getLeaderUUID().toString() : "None Assigned";
+        int memberCount = 0;
+        StringBuilder leadersBuilder = new StringBuilder();
+        for (FactionParticipant participant : faction.getParticipants().values()) {
+            memberCount++;
+            if (participant.isLeader()) {
+                String leaderDisplayName = participant.isPlayer()
+                        ? resolvePlayerDisplayName(server, participant.getUUID())
+                        : participant.getCachedName();
+                leadersBuilder.append("\n §7- §f").append(leaderDisplayName)
+                        .append(participant.isPlayer() ? " §7(player)" : " §7(villager)");
+            }
+        }
+        String leadersStr = leadersBuilder.isEmpty() ? " §7None Assigned" : leadersBuilder.toString();
 
         return "§6=== Faction Comprehensive Review: " + faction.getDisplayName() + " ===" +
                 "\n §7Internal Unique ID: §f" + faction.getId() +
-                "\n §7System LeaderUUID: §f" + leaderStr +
+                "\n §7Current Leaders:" + leadersStr +
                 "\n §bBalances Matrix:" +
                 "\n §7• Cogs: §f" + faction.getCogs() + " §7• Food: §f" + faction.getFood() + " §7• Mana: §f" + faction.getMana() +
                 "\n §7• Power / Members Count: §f" + memberCount +
+                "\n §7• Controlled Villages: §b" + VillageControlManager.getControlledVillageCount(factionId) +
                 "\n §dRegistered Allowed Origins:" + originsBuilder.toString() +
                 "\n §7Active Live Members Loaded: §b" + memberCount;
     }
 
     /**
      * Builds a formatted list of every active faction on the server, with
-     * each faction's ID, display name, and member count.
+     * each faction's ID, display name, and player/villager counts.
      *
      * @return the formatted list, or a placeholder message if no factions are active
      */
@@ -534,8 +729,8 @@ public class FactionManager {
         StringBuilder listBuilder = new StringBuilder("§6=== Active Registered Server Factions (" + activeMap.size() + ") ===");
         for (Faction faction : activeMap.values()) {
             if (faction != null) {
-                int memberCount = (faction.getMembers() != null) ? faction.getMembers().size() : 0;
-                int villagerCount = VillagerFactionRegistry.getVillagerCountForFaction(faction.getId());
+                int memberCount = getFactionMemberUUIDs(faction.getId()).size();
+                int villagerCount = getVillagerCountForFaction(faction.getId());
                 listBuilder.append("\n §7• §f").append(faction.getId())
                         .append(" §7-> Title: §a").append(faction.getDisplayName())
                         .append(" §7(Players: §b").append(memberCount)

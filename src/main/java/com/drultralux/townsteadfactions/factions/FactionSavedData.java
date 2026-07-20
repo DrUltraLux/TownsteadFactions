@@ -3,10 +3,10 @@ package com.drultralux.townsteadfactions.factions;
 import net.minecraft.core.HolderLookup;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.nbt.ListTag;
-import net.minecraft.nbt.NbtUtils;
 import net.minecraft.world.level.saveddata.SavedData;
+import com.drultralux.townsteadfactions.utils.LogManager;
+
 import java.util.Map;
-import java.util.UUID;
 
 /**
  * Handles NBT persistence of faction data to and from the world save,
@@ -15,7 +15,7 @@ import java.util.UUID;
  */
 public class FactionSavedData extends SavedData {
 
-    /** The raw NBT tag loaded from disk, kept for the server event layer to read on world load. */
+    /** The raw NBT tag loaded from disk, kept for the server event layer to read on load. */
     public CompoundTag rawLoadedTag = new CompoundTag();
 
     /**
@@ -36,7 +36,9 @@ public class FactionSavedData extends SavedData {
     }
 
     /**
-     * Serializes all currently active factions into the given NBT tag.
+     * Serializes all currently active factions into the given NBT tag,
+     * including their full participant roster (players and villagers
+     * alike, in one unified list) and activity log.
      *
      * @param tag the NBT tag to write faction data into
      * @param provider the registry lookup provider, unused here but required by the {@link SavedData} API
@@ -52,24 +54,29 @@ public class FactionSavedData extends SavedData {
                 CompoundTag factionNbt = new CompoundTag();
                 factionNbt.putString("id", faction.getId());
                 factionNbt.putString("displayName", faction.getDisplayName());
-                if (faction.getLeaderUUID() != null) {
-                    factionNbt.putUUID("leaderUUID", faction.getLeaderUUID());
-                }
                 factionNbt.putInt("cogs", faction.getCogs());
                 factionNbt.putInt("food", faction.getFood());
                 factionNbt.putInt("mana", faction.getMana());
 
-                ListTag membersList = new ListTag();
-                faction.getMembers().forEach((memberUuid, profile) -> {
-                    CompoundTag memberTag = new CompoundTag();
-                    memberTag.putUUID("uuid", memberUuid);
-                    memberTag.putString("title", profile.getTitle().name());
-                    memberTag.putLong("joinTimestamp", profile.getJoinTimestamp());
-                    membersList.add(memberTag);
-                });
-                factionNbt.put("members", membersList);
+                ListTag participantsList = new ListTag();
+                faction.getParticipants().forEach((uuid, participant) -> {
+                    CompoundTag participantTag = new CompoundTag();
+                    participantTag.putUUID("uuid", uuid);
+                    participantTag.putBoolean("isPlayer", participant.isPlayer());
+                    participantTag.putBoolean("leader", participant.isLeader());
 
-                //CompoundTag activityLogTag = new CompoundTag();
+                    if (participant.isPlayer()) {
+                        participantTag.putLong("joinTimestamp", participant.getJoinTimestamp());
+                    } else {
+                        participantTag.putString("name", participant.getCachedName());
+                        participantTag.putString("rootId", participant.getCachedRootId());
+                        participantTag.putString("title", participant.getCachedTitle().name());
+                    }
+
+                    participantsList.add(participantTag);
+                });
+                factionNbt.put("participants", participantsList);
+
                 ListTag logList = new ListTag();
                 for (ActivityLogEntry logEntry : faction.getActivityLog()) {
                     CompoundTag entryTag = new CompoundTag();

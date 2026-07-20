@@ -27,6 +27,9 @@ public abstract class DraggableWidget {
     /** Whether the widget is currently minimized. */
     protected boolean isMinimized = false;
 
+    /** The height, in pixels, of a widget's minimized (collapsed) header bar. */
+    protected static final int MINIMIZED_HEIGHT = 14;
+
     /** The x offset between the widget's origin and the mouse when a drag started. */
     protected int dragOffsetX;
 
@@ -67,7 +70,7 @@ public abstract class DraggableWidget {
      * @return {@code true} if the point is within the widget's bounds
      */
     public boolean isHovered(int mouseX, int mouseY) {
-        int currentHeight = this.isMinimized ? 14 : this.height;
+        int currentHeight = this.isMinimized ? MINIMIZED_HEIGHT : this.height;
         return mouseX >= this.x && mouseX < this.x + this.width &&
                 mouseY >= this.y && mouseY < this.y + currentHeight;
     }
@@ -176,6 +179,41 @@ public abstract class DraggableWidget {
      * @param y the new y position
      */
     public void setPosition(int x, int y) { this.x = x; this.y = y; }
+
+    /**
+     * Renders this widget's standard minimized (collapsed) appearance: a
+     * thin header bar with a label and a restore button, always
+     * {@link #MINIMIZED_HEIGHT} tall regardless of the widget's normal
+     * height. Subclasses should call this instead of their own content
+     * rendering whenever {@link #isMinimized} is true, so every widget's
+     * minimized state looks and behaves consistently — this is what
+     * actually makes minimizing shrink the widget, rather than just
+     * hiding its content inside an unchanged full-size box.
+     *
+     * @param graphics the graphics context to draw with
+     * @param font the font to draw the label and button with
+     * @param label the text to show in the header (e.g. "FACTION ROSTER")
+     */
+    protected void renderMinimizedHeader(GuiGraphics graphics, net.minecraft.client.gui.Font font, String label) {
+        int headerColor = this.isDragging ? 0xEE444444 : 0xEE222222;
+        graphics.fill(this.x, this.y, this.x + this.width, this.y + MINIMIZED_HEIGHT, headerColor);
+        graphics.renderOutline(this.x, this.y, this.width, MINIMIZED_HEIGHT, 0xFF555555);
+        graphics.drawString(font, label + " (MIN)", this.x + 6, this.y + 3, 0xFFAAAAAA, false);
+        graphics.drawString(font, "§e[+]", this.x + this.width - 16, this.y + 3, 0xFFFFAA00, false);
+    }
+
+    /**
+     * Renders the standard "[-]" minimize button in a widget's top-right
+     * corner, in the standard text_gold color. Subclasses should call
+     * this once, in their non-minimized render path, so every widget's
+     * minimize button looks and is positioned consistently.
+     *
+     * @param graphics the graphics context to draw with
+     * @param font the font to draw the button with
+     */
+    protected void renderMinimizeButton(GuiGraphics graphics, net.minecraft.client.gui.Font font) {
+        graphics.drawString(font, net.minecraft.network.chat.Component.literal("[-]"), this.x + this.width - 16, this.y + 3, com.drultralux.townsteadfactions.client.screen.FactionPalette.getBarColor("text_gold"), false);
+    }
 
     /**
      * Handles a mouse-wheel scroll. Default no-op; overridden by widgets

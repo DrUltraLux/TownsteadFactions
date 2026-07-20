@@ -42,10 +42,14 @@ public class PlayerModelWidget extends DraggableWidget {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
+        if (this.isMinimized) {
+            renderMinimizedHeader(graphics, Minecraft.getInstance().font, "AVATAR");
+            return;
+        }
+
         graphics.fill(this.x, this.y, this.x + this.width, this.y + this.height, 0x66000000);
         graphics.renderOutline(this.x, this.y, this.width, this.height, 0xFF444444);
-
-        if (this.isMinimized) return;
+        renderMinimizeButton(graphics, Minecraft.getInstance().font);
 
         int centerX = this.x + (this.width / 2);
         int centerY = this.y + this.height - 6;
